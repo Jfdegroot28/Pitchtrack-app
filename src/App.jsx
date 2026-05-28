@@ -149,6 +149,8 @@ export default function App(){
   const [authEmail,setAuthEmail]=useState('');
   const [authPass,setAuthPass]=useState('');
   const [authErr,setAuthErr]=useState('');
+const [authMode,setAuthMode]=useState('signin');
+const [authDone,setAuthDone]=useState(false);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session:s}})=>{setSession(s);setAuthLoading(false)});
