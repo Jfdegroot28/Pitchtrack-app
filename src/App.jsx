@@ -158,10 +158,17 @@ const [authDone,setAuthDone]=useState(false);
     return()=>subscription.unsubscribe();
   },[]);
 
-  const handleLogin=async()=>{
+const handleLogin=async()=>{
     setAuthErr('');
     const{error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPass});
     if(error)setAuthErr(error.message);
+  };
+
+  const handleSignUp=async()=>{
+    setAuthErr('');
+    const{error}=await supabase.auth.signUp({email:authEmail,password:authPass});
+    if(error)setAuthErr(error.message);
+    else setAuthDone(true);
   };
 
   useEffect(()=>{
