@@ -149,8 +149,8 @@ export default function App(){
   const [authEmail,setAuthEmail]=useState('');
   const [authPass,setAuthPass]=useState('');
   const [authErr,setAuthErr]=useState('');
-const [authMode,setAuthMode]=useState('signin');
-const [authDone,setAuthDone]=useState(false);
+  const [authMode,setAuthMode]=useState('signin');
+  const [authDone,setAuthDone]=useState(false);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session:s}})=>{setSession(s);setAuthLoading(false)});
@@ -158,7 +158,7 @@ const [authDone,setAuthDone]=useState(false);
     return()=>subscription.unsubscribe();
   },[]);
 
-const handleLogin=async()=>{
+  const handleLogin=async()=>{
     setAuthErr('');
     const{error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPass});
     if(error)setAuthErr(error.message);
@@ -241,7 +241,7 @@ const handleLogin=async()=>{
     <div style={{background:'#030712',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'system-ui,sans-serif',padding:'20px'}}>
       <div style={{background:'#0f172a',border:'1px solid #1e3a5f',borderRadius:'14px',padding:'40px 36px',width:'100%',maxWidth:'360px',textAlign:'center',boxShadow:'0 25px 60px rgba(0,0,0,0.6)'}}>
         <div style={{fontSize:'42px',marginBottom:'10px'}}>⚾</div>
-        <div style={{fontSize:'22px',fontWeight:'800',color:'#f1f5f9',marginBottom:'16px',letterSpacing:'-0.5px'}}>PitchTrack Pro</div>
+        <div style={{fontSize:'22px',fontWeight:'800',color:'#f1f5f9',marginBottom:'20px',letterSpacing:'-0.5px'}}>PitchTrack Pro</div>
         <div style={{display:'flex',gap:'4px',marginBottom:'24px',background:'#060d1a',borderRadius:'8px',padding:'4px'}}>
           {[{k:'signin',l:'Sign In'},{k:'signup',l:'Create Account'}].map(({k,l})=>(
             <button key={k} onClick={()=>{setAuthMode(k);setAuthErr('');setAuthDone(false);}} style={{flex:1,padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',background:authMode===k?'#1e3a5f':'transparent',color:authMode===k?'#60a5fa':'#475569',transition:'all 0.15s'}}>{l}</button>
@@ -249,18 +249,17 @@ const handleLogin=async()=>{
         </div>
         {authDone?(
           <div style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.25)',borderRadius:'8px',padding:'16px',fontSize:'13px',color:'#4ade80'}}>
-            ✓ Check your email to confirm your account, then sign in.
+            ✓ Account created! You can now sign in.
           </div>
         ):(
           <>
             {authErr&&<div style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:'6px',padding:'9px 12px',fontSize:'12px',color:'#f87171',marginBottom:'16px',textAlign:'left'}}>{authErr}</div>}
             <input type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} style={{width:'100%',padding:'11px 12px',borderRadius:'7px',border:'1px solid #1e3a5f',background:'#060d1a',color:'#f1f5f9',fontSize:'14px',marginBottom:'10px',boxSizing:'border-box',outline:'none',display:'block'}}/>
             <input type="password" placeholder="Password" value={authPass} onChange={e=>setAuthPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(authMode==='signin'?handleLogin():handleSignUp())} style={{width:'100%',padding:'11px 12px',borderRadius:'7px',border:'1px solid #1e3a5f',background:'#060d1a',color:'#f1f5f9',fontSize:'14px',marginBottom:'18px',boxSizing:'border-box',outline:'none',display:'block'}}/>
-            {authMode==='signin'?(
-              <button onClick={handleLogin} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#3b82f6',color:'#fff',letterSpacing:'0.3px'}}>Sign In</button>
-            ):(
-              <button onClick={handleSignUp} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#22c55e',color:'#fff',letterSpacing:'0.3px'}}>Create Account</button>
-            )}
+            {authMode==='signin'
+              ?<button onClick={handleLogin} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#3b82f6',color:'#fff',letterSpacing:'0.3px'}}>Sign In</button>
+              :<button onClick={handleSignUp} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#22c55e',color:'#fff',letterSpacing:'0.3px'}}>Create Account</button>
+            }
           </>
         )}
       </div>
