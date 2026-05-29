@@ -69,10 +69,20 @@ function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={}){
   const lobDen=hits.length+bbs.length+hbps.length-1.2*hrs.length;
   const lobPct=lobDen>0?Math.round(lobNum/lobDen*100)+'%':'—';
   const countPitchMix=Object.fromEntries(COUNTS.map(c=>{const[b,s2]=c.split('-').map(Number);const cps=pitches.filter(p=>p.cntBefore?.b===b&&p.cntBefore?.s===s2);const tot=cps.length;const byType=Object.fromEntries(PT.map(t=>{const n=cps.filter(p=>p.type===t).length;return[t,{n,pct:tot>0?Math.round(n/tot*100):0}]}));const nStrike=cps.filter(p=>['StrikeL','StrikeS','Foul'].includes(p.result)).length;const nBall=cps.filter(p=>p.result==='Ball').length;const nInPlay=cps.filter(p=>p.result==='InPlay').length;return[c,{total:tot,byType,strikePct:tot>0?Math.round(nStrike/tot*100):0,ballPct:tot>0?Math.round(nBall/tot*100):0,inPlayPct:tot>0?Math.round(nInPlay/tot*100):0,nStrike,nBall,nInPlay}];}));
+
+  // ── FEATURE 6: Pitch sequence patterns ──
+  const seqPatterns=Object.fromEntries(PT.map(t=>{
+    const nexts=[];
+    pitches.forEach((p,i)=>{if(p.type===t&&i+1<pitches.length)nexts.push(pitches[i+1].type)});
+    const tot=nexts.length;
+    const byType=Object.fromEntries(PT.map(t2=>{const n=nexts.filter(x=>x===t2).length;return[t2,{n,pct:tot>0?Math.round(n/tot*100):0}]}).filter(([,v])=>v.n>0));
+    return[t,{total:tot,byType}];
+  }));
+
   const mkSplit=(sAbs,sPs)=>{if(!sAbs.length)return null;const sHits=sAbs.filter(ab=>['1B','2B','3B','HR'].includes(ab.result));const sHrs=sAbs.filter(ab=>ab.result==='HR');const sKs=sAbs.filter(ab=>['K','KL'].includes(ab.result));const sBbs=sAbs.filter(ab=>ab.result==='BB');const sAbN=sAbs.filter(ab=>!['BB','HBP'].includes(ab.result)).length;const sBabipD=sAbN-sKs.length-sHrs.length;const sWhiffs=sPs.filter(p=>p.result==='StrikeS');const sFps=sAbs.filter(ab=>ab.fps);const sInPlay=sPs.filter(p=>p.result==='InPlay');const sGb=sInPlay.filter(p=>p.hitType==='GB');const sFbP=sInPlay.filter(p=>['FB','PU'].includes(p.hitType));const sVps=sPs.filter(p=>p.vel);const sPtBk=Object.fromEntries(PT.map(t=>{const ps=sPs.filter(p=>p.type===t);return[t,{n:ps.length,pct:sPs.length?Math.round(ps.length/sPs.length*100):0,whiff:ps.filter(p=>p.result==='StrikeS').length}]}));return{bf:sAbs.length,tp:sPs.length,ba:fmtAvg(sAbN>0?sHits.length/sAbN:0),babip:fmtAvg(sBabipD>0?(sHits.length-sHrs.length)/sBabipD:0),pbf:sAbs.length>0?(sPs.length/sAbs.length).toFixed(2):'—',kPct:sAbs.length>0?Math.round(sKs.length/sAbs.length*100)+'%':'—',bbPct:sAbs.length>0?Math.round(sBbs.length/sAbs.length*100)+'%':'—',whiffPct:sPs.length>0?Math.round(sWhiffs.length/sPs.length*100)+'%':'—',fpsPct:sAbs.length>0?Math.round(sFps.length/sAbs.length*100)+'%':'—',gbPct:sInPlay.length>0?Math.round(sGb.length/sInPlay.length*100)+'%':'—',fbPct:sInPlay.length>0?Math.round(sFbP.length/sInPlay.length*100)+'%':'—',avgVel:sVps.length?Math.round(sVps.reduce((s,p)=>s+p.vel,0)/sVps.length):null,ptBk:sPtBk};};
   const lSplit=mkSplit(abs.filter(ab=>ab.hand==='L'),pitches.filter(p=>p.hand==='L'));
   const rSplit=mkSplit(abs.filter(ab=>ab.hand==='R'),pitches.filter(p=>p.hand==='R'));
-  return{ip:`${Math.floor(ipD)}.${outs%3}`,bf,tp,pip:ipD>0?(tp/ipD).toFixed(1):'—',pbf:bf>0?(tp/bf).toFixed(2):'—',sub3pct:bf>0?Math.round(sub3.length/bf*100)+'%':'—',inn123,sub13,fpsPct:bf>0?Math.round(fps.length/bf*100)+'%':'—',fpsoPct:fps.length>0?Math.round(fpso.length/fps.length*100)+'%':'—',compPct:tp>0?Math.round(compP.length/tp*100)+'%':'—',bbInn:ipD>0?(bbs.length/ipD).toFixed(2):'—',zeroWalk,lobb,bbsS,lobbS,whiffPct:tp>0?Math.round(whiffs.length/tp*100)+'%':'—',weakPct:inPlay.length>0?Math.round(weakP.length/inPlay.length*100)+'%':'—',hhbPct:inPlay.length>0?Math.round(hhbP.length/inPlay.length*100)+'%':'—',fbPct:inPlay.length>0?Math.round(fbP.length/inPlay.length*100)+'%':'—',gbPct:inPlay.length>0?Math.round(gbP.length/inPlay.length*100)+'%':'—',babip:fmtAvg(babip),baRisp:fmtAvg(baRisp),ptBreak,countBk,countPitchMix,walks:bbs.length,hits:hits.length,hrs:hrs.length,ks:ks.length,outs,dps,innCount:innNums.length,totalRuns,totalEarnedRuns,era,kbb,lobPct,lSplit,rSplit};
+  return{ip:`${Math.floor(ipD)}.${outs%3}`,bf,tp,pip:ipD>0?(tp/ipD).toFixed(1):'—',pbf:bf>0?(tp/bf).toFixed(2):'—',sub3pct:bf>0?Math.round(sub3.length/bf*100)+'%':'—',inn123,sub13,fpsPct:bf>0?Math.round(fps.length/bf*100)+'%':'—',fpsoPct:fps.length>0?Math.round(fpso.length/fps.length*100)+'%':'—',compPct:tp>0?Math.round(compP.length/tp*100)+'%':'—',bbInn:ipD>0?(bbs.length/ipD).toFixed(2):'—',zeroWalk,lobb,bbsS,lobbS,whiffPct:tp>0?Math.round(whiffs.length/tp*100)+'%':'—',weakPct:inPlay.length>0?Math.round(weakP.length/inPlay.length*100)+'%':'—',hhbPct:inPlay.length>0?Math.round(hhbP.length/inPlay.length*100)+'%':'—',fbPct:inPlay.length>0?Math.round(fbP.length/inPlay.length*100)+'%':'—',gbPct:inPlay.length>0?Math.round(gbP.length/inPlay.length*100)+'%':'—',babip:fmtAvg(babip),baRisp:fmtAvg(baRisp),ptBreak,countBk,countPitchMix,seqPatterns,walks:bbs.length,hits:hits.length,hrs:hrs.length,ks:ks.length,outs,dps,innCount:innNums.length,totalRuns,totalEarnedRuns,era,kbb,lobPct,lSplit,rSplit};
 }
 
 function ZoneView({pitches=[],pending=null,onClickZone=null,filterType='all',hitsOnly=false}){
@@ -195,7 +205,6 @@ export default function App(){
   const [authDone,setAuthDone]=useState(false);
 
   useEffect(()=>{setCurAB(prev=>({...prev,risp:runners.second||runners.third}));},[runners.second,runners.third]);
-
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session:s}})=>{setSession(s);setAuthLoading(false)});
     const{data:{subscription}}=supabase.auth.onAuthStateChange((_,s)=>setSession(s));
@@ -240,7 +249,6 @@ export default function App(){
     setPend({...INIT_P});
   },[pend,pitches,atBats,curAB,inning]);
 
-  // ── FEATURE 5: Undo across at-bat boundaries ──
   const handleUndo=()=>{
     if(curAB.pitches.length>0){
       const np=curAB.pitches.slice(0,-1);
@@ -600,7 +608,7 @@ export default function App(){
                 </div>
               )}
 
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'14px',marginBottom:'14px'}}>
                 <div style={card()}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'4px'}}>Count Breakdown + Pitch Mix</div>
                   <div style={{fontSize:'9px',color:'#334155',marginBottom:'10px'}}>At-bat results & pitch selection at each count</div>
@@ -631,6 +639,40 @@ export default function App(){
                   </table>
                 </div>
               </div>
+
+              {/* ── FEATURE 6: PITCH SEQUENCE PATTERNS ── */}
+              {anaData.stats?.seqPatterns&&PT.some(t=>anaData.stats.seqPatterns[t]?.total>=3)&&(
+                <div style={card()}>
+                  <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'4px',fontFamily:'"Space Grotesk",sans-serif'}}>Pitch Sequence Patterns</div>
+                  <div style={{fontSize:'9px',color:'#334155',marginBottom:'14px'}}>What pitch follows each pitch type</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr)',gap:'12px'}}>
+                    {PT.filter(t=>anaData.stats.seqPatterns[t]?.total>=3).map(t=>{
+                      const seq=anaData.stats.seqPatterns[t];
+                      const sorted=Object.entries(seq.byType).sort((a,b)=>b[1].pct-a[1].pct);
+                      return(
+                        <div key={t} style={{background:'#060d1a',borderRadius:'8px',padding:'10px',border:'1px solid #0d1f33'}}>
+                          <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}}>
+                            <span style={{background:PC[t],color:'#fff',padding:'2px 8px',borderRadius:'4px',fontWeight:'900',fontSize:'11px',fontFamily:'monospace'}}>{t}</span>
+                            <span style={{fontSize:'10px',color:'#475569',fontWeight:'700'}}>{PL[t]}</span>
+                            <span style={{marginLeft:'auto',fontSize:'9px',color:'#334155',fontWeight:'700'}}>{seq.total} next pitches</span>
+                          </div>
+                          <div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'5px'}}>Followed by →</div>
+                          {sorted.map(([t2,{n,pct}])=>(
+                            <div key={t2} style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'5px'}}>
+                              <span style={{background:PC[t2],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'24px',textAlign:'center',fontFamily:'monospace'}}>{t2}</span>
+                              <div style={{flex:1,height:'6px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}>
+                                <div style={{width:pct+'%',height:'100%',background:PC[t2],borderRadius:'3px',transition:'width 0.3s'}}/>
+                              </div>
+                              <span style={{color:'#e2e8f0',fontWeight:'800',fontSize:'10px',minWidth:'32px',textAlign:'right',fontFamily:'monospace'}}>{pct}%</span>
+                              <span style={{color:'#334155',fontSize:'9px',minWidth:'20px',fontFamily:'monospace'}}>{n}p</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
