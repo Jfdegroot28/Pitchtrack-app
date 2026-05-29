@@ -6,6 +6,7 @@ const PC = { FB:'#f43f5e', '2S':'#f97316', CT:'#eab308', SL:'#22d3ee', CB:'#818c
 const PL = { FB:'4-Seam', '2S':'2-Seam', CT:'Cutter', SL:'Slider', CB:'Curve', CH:'Change', SP:'Split' };
 const W=220,H=265,ZL=64,ZR=156,ZT=60,ZB=180;
 const ZW=ZR-ZL, ZH=ZB-ZT, CW=ZW/3, CR=ZH/3;
+const SF_W=200,SF_H=190;
 const getZone=(fx,fy)=>{const x=fx*W,y=fy*H;return(x>=ZL&&x<=ZR&&y>=ZT&&y<=ZB)?Math.floor((y-ZT)/CR)*3+Math.floor((x-ZL)/CW)+1:0};
 const getComp=(fx,fy,m=14)=>{const x=fx*W,y=fy*H;return x>=ZL-m&&x<=ZR+m&&y>=ZT-m&&y<=ZB+m};
 const uid=()=>Math.random().toString(36).slice(2,9);
@@ -14,7 +15,7 @@ const fmtAvg=n=>(!isFinite(n)||isNaN(n))?'.---':n.toFixed(3).replace(/^0\./,'.')
 const advCnt=(cnt,res)=>{let{b,s}={...cnt};if(res==='Ball')b=Math.min(b+1,4);else if(['StrikeL','StrikeS'].includes(res))s=Math.min(s+1,3);else if(res==='Foul'&&s<2)s++;return{b,s}};
 const isTerm=(cnt,res)=>['InPlay','HBP'].includes(res)||(res==='Ball'&&cnt.b>=3)||(['StrikeL','StrikeS'].includes(res)&&cnt.s>=2);
 const mkAB=(inn=1,lo=false)=>({id:uid(),inning:inn,leadoff:lo,risp:false,scored:false,fps:false,pitches:[],cnt:{b:0,s:0},result:null,hand:'R'});
-const INIT_P={type:'FB',vel:'',fx:null,fy:null,result:null,hitType:null,hitStr:null,hitResult:null};
+const INIT_P={type:'FB',vel:'',fx:null,fy:null,result:null,hitType:null,hitStr:null,hitResult:null,sprayX:null,sprayY:null};
 const INIT_RUNNERS={first:false,second:false,third:false};
 
 const RESULTS=[{k:'Ball',l:'Ball',c:'#3b82f6'},{k:'StrikeL',l:'Called K',c:'#ef4444'},{k:'StrikeS',l:'Swing K',c:'#ef4444'},{k:'Foul',l:'Foul',c:'#f59e0b'},{k:'InPlay',l:'In Play',c:'#22c55e'},{k:'HBP',l:'HBP',c:'#a78bfa'}];
@@ -38,10 +39,7 @@ function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={}){
   const fps=abs.filter(ab=>ab.fps);
   const fpso=fps.filter(ab=>['Out','K','KL','FC','SF','DP'].includes(ab.result));
   const sub3=abs.filter(ab=>(ab.pitches?.length||0)<=3);
-  const inn123=Object.values(innMap).filter(({abs:a})=>{
-    const innOuts=a.reduce((sum,ab)=>sum+(ab.result==='DP'?2:['Out','K','KL'].includes(ab.result)?1:0),0);
-    return innOuts>=3&&!a.some(ab=>['1B','2B','3B','HR','BB','HBP','E'].includes(ab.result));
-  }).length;
+  const inn123=Object.values(innMap).filter(({abs:a})=>{const innOuts=a.reduce((sum,ab)=>sum+(ab.result==='DP'?2:['Out','K','KL'].includes(ab.result)?1:0),0);return innOuts>=3&&!a.some(ab=>['1B','2B','3B','HR','BB','HBP','E'].includes(ab.result));}).length;
   const sub13=Object.values(innMap).filter(({ps})=>ps.length<=13).length;
   const zeroWalk=Object.values(innMap).filter(({abs:a})=>!a.some(ab=>ab.result==='BB')).length;
   const lobb=bbs.filter(ab=>ab.leadoff).length;
@@ -65,45 +63,13 @@ function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={}){
   const countBk=Object.fromEntries(COUNTS.map(c=>{const[b,s]=c.split('-').map(Number);const a=abs.filter(ab=>(ab.pitches||[]).some(p=>p.cntBefore?.b===b&&p.cntBefore?.s===s));return[c,{n:a.length,outs:a.filter(ab=>['Out','K','KL','FC','DP'].includes(ab.result)).length,hits:a.filter(ab=>['1B','2B','3B','HR'].includes(ab.result)).length}]}));
   const totalRuns=Object.values(runsByInning).reduce((s,r)=>s+(r||0),0);
   const totalEarnedRuns=Object.values(earnedRunsByInning).reduce((s,r)=>s+(r||0),0);
-
-  // ERA
   const era=ipD>0?((totalEarnedRuns*9)/ipD).toFixed(2):'0.00';
-
-  // K/BB
   const kbb=bbs.length>0?(ks.length/bbs.length).toFixed(1):ks.length>0?'∞':'—';
-
-  // LOB% = (H + BB + HBP - R) / (H + BB + HBP - 1.2*HR)
   const lobNum=hits.length+bbs.length+hbps.length-totalRuns;
   const lobDen=hits.length+bbs.length+hbps.length-1.2*hrs.length;
   const lobPct=lobDen>0?Math.round(lobNum/lobDen*100)+'%':'—';
-
-  const countPitchMix=Object.fromEntries(COUNTS.map(c=>{
-    const[b,s2]=c.split('-').map(Number);
-    const cps=pitches.filter(p=>p.cntBefore?.b===b&&p.cntBefore?.s===s2);
-    const tot=cps.length;
-    const byType=Object.fromEntries(PT.map(t=>{const n=cps.filter(p=>p.type===t).length;return[t,{n,pct:tot>0?Math.round(n/tot*100):0}]}));
-    const nStrike=cps.filter(p=>['StrikeL','StrikeS','Foul'].includes(p.result)).length;
-    const nBall=cps.filter(p=>p.result==='Ball').length;
-    const nInPlay=cps.filter(p=>p.result==='InPlay').length;
-    return[c,{total:tot,byType,strikePct:tot>0?Math.round(nStrike/tot*100):0,ballPct:tot>0?Math.round(nBall/tot*100):0,inPlayPct:tot>0?Math.round(nInPlay/tot*100):0,nStrike,nBall,nInPlay}];
-  }));
-  const mkSplit=(sAbs,sPs)=>{
-    if(!sAbs.length)return null;
-    const sHits=sAbs.filter(ab=>['1B','2B','3B','HR'].includes(ab.result));
-    const sHrs=sAbs.filter(ab=>ab.result==='HR');
-    const sKs=sAbs.filter(ab=>['K','KL'].includes(ab.result));
-    const sBbs=sAbs.filter(ab=>ab.result==='BB');
-    const sAbN=sAbs.filter(ab=>!['BB','HBP'].includes(ab.result)).length;
-    const sBabipD=sAbN-sKs.length-sHrs.length;
-    const sWhiffs=sPs.filter(p=>p.result==='StrikeS');
-    const sFps=sAbs.filter(ab=>ab.fps);
-    const sInPlay=sPs.filter(p=>p.result==='InPlay');
-    const sGb=sInPlay.filter(p=>p.hitType==='GB');
-    const sFbP=sInPlay.filter(p=>['FB','PU'].includes(p.hitType));
-    const sVps=sPs.filter(p=>p.vel);
-    const sPtBk=Object.fromEntries(PT.map(t=>{const ps=sPs.filter(p=>p.type===t);return[t,{n:ps.length,pct:sPs.length?Math.round(ps.length/sPs.length*100):0,whiff:ps.filter(p=>p.result==='StrikeS').length}]}));
-    return{bf:sAbs.length,tp:sPs.length,ba:fmtAvg(sAbN>0?sHits.length/sAbN:0),babip:fmtAvg(sBabipD>0?(sHits.length-sHrs.length)/sBabipD:0),pbf:sAbs.length>0?(sPs.length/sAbs.length).toFixed(2):'—',kPct:sAbs.length>0?Math.round(sKs.length/sAbs.length*100)+'%':'—',bbPct:sAbs.length>0?Math.round(sBbs.length/sAbs.length*100)+'%':'—',whiffPct:sPs.length>0?Math.round(sWhiffs.length/sPs.length*100)+'%':'—',fpsPct:sAbs.length>0?Math.round(sFps.length/sAbs.length*100)+'%':'—',gbPct:sInPlay.length>0?Math.round(sGb.length/sInPlay.length*100)+'%':'—',fbPct:sInPlay.length>0?Math.round(sFbP.length/sInPlay.length*100)+'%':'—',avgVel:sVps.length?Math.round(sVps.reduce((s,p)=>s+p.vel,0)/sVps.length):null,ptBk:sPtBk};
-  };
+  const countPitchMix=Object.fromEntries(COUNTS.map(c=>{const[b,s2]=c.split('-').map(Number);const cps=pitches.filter(p=>p.cntBefore?.b===b&&p.cntBefore?.s===s2);const tot=cps.length;const byType=Object.fromEntries(PT.map(t=>{const n=cps.filter(p=>p.type===t).length;return[t,{n,pct:tot>0?Math.round(n/tot*100):0}]}));const nStrike=cps.filter(p=>['StrikeL','StrikeS','Foul'].includes(p.result)).length;const nBall=cps.filter(p=>p.result==='Ball').length;const nInPlay=cps.filter(p=>p.result==='InPlay').length;return[c,{total:tot,byType,strikePct:tot>0?Math.round(nStrike/tot*100):0,ballPct:tot>0?Math.round(nBall/tot*100):0,inPlayPct:tot>0?Math.round(nInPlay/tot*100):0,nStrike,nBall,nInPlay}];}));
+  const mkSplit=(sAbs,sPs)=>{if(!sAbs.length)return null;const sHits=sAbs.filter(ab=>['1B','2B','3B','HR'].includes(ab.result));const sHrs=sAbs.filter(ab=>ab.result==='HR');const sKs=sAbs.filter(ab=>['K','KL'].includes(ab.result));const sBbs=sAbs.filter(ab=>ab.result==='BB');const sAbN=sAbs.filter(ab=>!['BB','HBP'].includes(ab.result)).length;const sBabipD=sAbN-sKs.length-sHrs.length;const sWhiffs=sPs.filter(p=>p.result==='StrikeS');const sFps=sAbs.filter(ab=>ab.fps);const sInPlay=sPs.filter(p=>p.result==='InPlay');const sGb=sInPlay.filter(p=>p.hitType==='GB');const sFbP=sInPlay.filter(p=>['FB','PU'].includes(p.hitType));const sVps=sPs.filter(p=>p.vel);const sPtBk=Object.fromEntries(PT.map(t=>{const ps=sPs.filter(p=>p.type===t);return[t,{n:ps.length,pct:sPs.length?Math.round(ps.length/sPs.length*100):0,whiff:ps.filter(p=>p.result==='StrikeS').length}]}));return{bf:sAbs.length,tp:sPs.length,ba:fmtAvg(sAbN>0?sHits.length/sAbN:0),babip:fmtAvg(sBabipD>0?(sHits.length-sHrs.length)/sBabipD:0),pbf:sAbs.length>0?(sPs.length/sAbs.length).toFixed(2):'—',kPct:sAbs.length>0?Math.round(sKs.length/sAbs.length*100)+'%':'—',bbPct:sAbs.length>0?Math.round(sBbs.length/sAbs.length*100)+'%':'—',whiffPct:sPs.length>0?Math.round(sWhiffs.length/sPs.length*100)+'%':'—',fpsPct:sAbs.length>0?Math.round(sFps.length/sAbs.length*100)+'%':'—',gbPct:sInPlay.length>0?Math.round(sGb.length/sInPlay.length*100)+'%':'—',fbPct:sInPlay.length>0?Math.round(sFbP.length/sInPlay.length*100)+'%':'—',avgVel:sVps.length?Math.round(sVps.reduce((s,p)=>s+p.vel,0)/sVps.length):null,ptBk:sPtBk};};
   const lSplit=mkSplit(abs.filter(ab=>ab.hand==='L'),pitches.filter(p=>p.hand==='L'));
   const rSplit=mkSplit(abs.filter(ab=>ab.hand==='R'),pitches.filter(p=>p.hand==='R'));
   return{ip:`${Math.floor(ipD)}.${outs%3}`,bf,tp,pip:ipD>0?(tp/ipD).toFixed(1):'—',pbf:bf>0?(tp/bf).toFixed(2):'—',sub3pct:bf>0?Math.round(sub3.length/bf*100)+'%':'—',inn123,sub13,fpsPct:bf>0?Math.round(fps.length/bf*100)+'%':'—',fpsoPct:fps.length>0?Math.round(fpso.length/fps.length*100)+'%':'—',compPct:tp>0?Math.round(compP.length/tp*100)+'%':'—',bbInn:ipD>0?(bbs.length/ipD).toFixed(2):'—',zeroWalk,lobb,bbsS,lobbS,whiffPct:tp>0?Math.round(whiffs.length/tp*100)+'%':'—',weakPct:inPlay.length>0?Math.round(weakP.length/inPlay.length*100)+'%':'—',hhbPct:inPlay.length>0?Math.round(hhbP.length/inPlay.length*100)+'%':'—',fbPct:inPlay.length>0?Math.round(fbP.length/inPlay.length*100)+'%':'—',gbPct:inPlay.length>0?Math.round(gbP.length/inPlay.length*100)+'%':'—',babip:fmtAvg(babip),baRisp:fmtAvg(baRisp),ptBreak,countBk,countPitchMix,walks:bbs.length,hits:hits.length,hrs:hrs.length,ks:ks.length,outs,dps,innCount:innNums.length,totalRuns,totalEarnedRuns,era,kbb,lobPct,lSplit,rSplit};
@@ -135,12 +101,7 @@ function ZoneView({pitches=[],pending=null,onClickZone=null,filterType='all',hit
 function DensityZone({pitches=[],filterType='all',hitsOnly=false}){
   const filtered=useMemo(()=>{let d=filterType==='all'?pitches:pitches.filter(p=>p.type===filterType);if(hitsOnly)d=d.filter(p=>['1B','2B','3B','HR'].includes(p.hitResult));return d},[pitches,filterType,hitsOnly]);
   const COLS=14,ROWS=16;
-  const grid=useMemo(()=>{
-    const cells=Array(ROWS).fill(null).map(()=>Array(COLS).fill(0));
-    filtered.forEach(p=>{if(p.fx==null||p.fy==null)return;const col=Math.min(Math.floor(p.fx*COLS),COLS-1);const row=Math.min(Math.floor(p.fy*ROWS),ROWS-1);cells[row][col]++;});
-    const max=Math.max(...cells.flat(),1);
-    return cells.map(row=>row.map(v=>v/max));
-  },[filtered]);
+  const grid=useMemo(()=>{const cells=Array(ROWS).fill(null).map(()=>Array(COLS).fill(0));filtered.forEach(p=>{if(p.fx==null||p.fy==null)return;const col=Math.min(Math.floor(p.fx*COLS),COLS-1);const row=Math.min(Math.floor(p.fy*ROWS),ROWS-1);cells[row][col]++;});const max=Math.max(...cells.flat(),1);return cells.map(row=>row.map(v=>v/max));},[filtered]);
   const getColor=v=>{if(v===0)return null;if(v<0.15)return`rgba(59,130,246,${v*4})`;if(v<0.35)return`rgba(99,179,237,${0.3+v*0.8})`;if(v<0.55)return`rgba(34,197,94,${0.4+v*0.6})`;if(v<0.75)return`rgba(245,158,11,${0.5+v*0.5})`;return`rgba(244,63,94,${0.65+v*0.35})`;};
   const cW=W/COLS,cH=H/ROWS;
   return(
@@ -154,6 +115,28 @@ function DensityZone({pitches=[],filterType='all',hitsOnly=false}){
       <polygon points={`${W/2-10},${H-20} ${W/2+10},${H-20} ${W/2+14},${H-12} ${W/2},${H-7} ${W/2-14},${H-12}`} fill="#0a1929" stroke="#2d6a9f" strokeWidth="1.5"/>
       <g transform={`translate(6,${H-14})`}>{['#3b82f6','#22c55e','#f59e0b','#f43f5e'].map((c,i)=><rect key={i} x={i*10} y={0} width={9} height={7} fill={c} rx="1" opacity="0.8"/>)}<text x="0" y="16" fill="#334155" fontSize="7.5" fontFamily="monospace">low → high density</text></g>
       <text x={W-6} y={H-4} textAnchor="end" fill="#334155" fontSize="8" fontFamily="monospace">{filtered.length}p</text>
+    </svg>
+  );
+}
+
+function SprayChart({pitches=[],filterType='all',onClickField=null,pendingSpray=null}){
+  const dots=useMemo(()=>{let d=pitches.filter(p=>p.result==='InPlay'&&p.sprayX!=null&&p.sprayY!=null);if(filterType!=='all')d=d.filter(p=>p.type===filterType);return d},[pitches,filterType]);
+  const handleClick=useCallback(e=>{if(!onClickField)return;const r=e.currentTarget.getBoundingClientRect();onClickField((e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height)},[onClickField]);
+  return(
+    <svg viewBox={`0 0 ${SF_W} ${SF_H}`} style={{width:'100%',maxWidth:220,height:'auto',display:'block',margin:'0 auto',cursor:onClickField?'crosshair':'default'}} onClick={handleClick}>
+      <rect width={SF_W} height={SF_H} fill="#060d1a" rx="8"/>
+      <path d="M100,178 L5,158 Q100,5 195,158 Z" fill="#071a07" opacity="0.6"/>
+      <path d="M5,158 Q100,5 195,158" fill="none" stroke="#1a3a1a" strokeWidth="2"/>
+      <line x1="100" y1="178" x2="5" y2="158" stroke="#1e3a5f" strokeWidth="1"/>
+      <line x1="100" y1="178" x2="195" y2="158" stroke="#1e3a5f" strokeWidth="1"/>
+      <circle cx="100" cy="123" r="52" fill="none" stroke="#1e3a1e" strokeWidth="1" strokeDasharray="3,3" opacity="0.4"/>
+      <path d="M100,172 L148,124 L100,76 L52,124 Z" fill="none" stroke="#1e3a5f" strokeWidth="1"/>
+      {[[100,76,'2B'],[148,124,'1B'],[52,124,'3B']].map(([x,y,l])=>(<g key={l}><rect x={x-5} y={y-5} width="10" height="10" fill="#1e3a5f" transform={`rotate(45,${x},${y})`}/><text x={x} y={y+3} textAnchor="middle" fill="#334155" fontSize="7" fontFamily="monospace">{l}</text></g>))}
+      <polygon points="100,178 107,173 105,166 95,166 93,173" fill="#1e3a5f"/>
+      <rect x="96" y="116" width="8" height="3" fill="#1e3a5f" rx="1"/>
+      {dots.map((p,i)=>{const isHit=['1B','2B','3B','HR'].includes(p.hitResult);return(<g key={i}>{isHit&&<circle cx={p.sprayX*SF_W} cy={p.sprayY*SF_H} r={9} fill={PC[p.type]} opacity="0.15"/>}<circle cx={p.sprayX*SF_W} cy={p.sprayY*SF_H} r={isHit?5.5:4} fill={PC[p.type]||'#94a3b8'} stroke={isHit?'#fff':'none'} strokeWidth="1.5" opacity="0.9"/></g>);})}
+      {pendingSpray&&<circle cx={pendingSpray.x*SF_W} cy={pendingSpray.y*SF_H} r={8} fill="#f59e0b" stroke="#fff" strokeWidth="2" opacity="0.85"/>}
+      {!dots.length&&!onClickField&&<text x={SF_W/2} y={SF_H/2} textAnchor="middle" fill="#1e3a5f" fontSize="11" fontFamily="monospace">No in-play data yet</text>}
     </svg>
   );
 }
@@ -202,7 +185,7 @@ export default function App(){
   const [inningRuns,setInningRuns]=useState({});
   const [earnedRunsByInning,setEarnedRunsByInning]=useState({});
   const [runners,setRunners]=useState({...INIT_RUNNERS});
-  const [ana,setAna]=useState({pitcher:'',outingId:'all',filterType:'all',hitsOnly:false,handFilter:'all',heatMode:'dots'});
+  const [ana,setAna]=useState({pitcher:'',outingId:'all',filterType:'all',hitsOnly:false,handFilter:'all',heatMode:'dots',sprayFilter:'all'});
   const [session,setSession]=useState(null);
   const [authLoading,setAuthLoading]=useState(true);
   const [authEmail,setAuthEmail]=useState('');
@@ -245,7 +228,7 @@ export default function App(){
     if(!pend.fx||!pend.result)return;
     if(pend.result==='InPlay'&&(!pend.hitType||!pend.hitResult))return;
     const zone=getZone(pend.fx,pend.fy),comp=getComp(pend.fx,pend.fy);
-    const pitch={id:uid(),type:pend.type,vel:pend.vel?parseFloat(pend.vel):null,fx:pend.fx,fy:pend.fy,zone,comp,result:pend.result,hitType:pend.hitType,hitStr:pend.hitStr,hitResult:pend.hitResult,inning,cntBefore:{...curAB.cnt},pitchNumAB:curAB.pitches.length+1,hand:curAB.hand};
+    const pitch={id:uid(),type:pend.type,vel:pend.vel?parseFloat(pend.vel):null,fx:pend.fx,fy:pend.fy,zone,comp,result:pend.result,hitType:pend.hitType,hitStr:pend.hitStr,hitResult:pend.hitResult,sprayX:pend.sprayX,sprayY:pend.sprayY,inning,cntBefore:{...curAB.cnt},pitchNumAB:curAB.pitches.length+1,hand:curAB.hand};
     const newCnt=advCnt(curAB.cnt,pend.result);
     const term=isTerm(curAB.cnt,pend.result);
     const abPitches=[...curAB.pitches,pitch];
@@ -267,16 +250,7 @@ export default function App(){
   };
   const addPitcher=()=>{if(!newPName.trim())return;const name=newPName.trim();setPitchers(prev=>[...new Set([...prev,name])].sort());setNewPName('');if(session)supabase.from('pitchers').upsert({name}).then(()=>{})};
   const curStats=useMemo(()=>computeStats(pitches,atBats,inningRuns,earnedRunsByInning),[pitches,atBats,inningRuns,earnedRunsByInning]);
-  const anaData=useMemo(()=>{
-    if(!ana.pitcher)return{pitches:[],atBats:[],stats:null,outings:[]};
-    const fo=outings.filter(o=>o.pitcher===ana.pitcher&&(ana.outingId==='all'||o.id===ana.outingId));
-    let ps=fo.flatMap(o=>o.pitches);let as=fo.flatMap(o=>o.atBats);
-    const aggRuns=fo.reduce((acc,o)=>{Object.entries(o.inningRuns||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});
-    const aggER=fo.reduce((acc,o)=>{Object.entries(o.earnedRunsByInning||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});
-    const filtPs=ana.handFilter==='all'?ps:ps.filter(p=>p.hand===ana.handFilter);
-    const filtAs=ana.handFilter==='all'?as:as.filter(ab=>ab.hand===ana.handFilter);
-    return{pitches:ps,atBats:as,filtPitches:filtPs,filtAtBats:filtAs,stats:computeStats(ps,as,aggRuns,aggER),filtStats:computeStats(filtPs,filtAs),outings:fo};
-  },[outings,ana]);
+  const anaData=useMemo(()=>{if(!ana.pitcher)return{pitches:[],atBats:[],stats:null,outings:[]};const fo=outings.filter(o=>o.pitcher===ana.pitcher&&(ana.outingId==='all'||o.id===ana.outingId));let ps=fo.flatMap(o=>o.pitches);let as=fo.flatMap(o=>o.atBats);const aggRuns=fo.reduce((acc,o)=>{Object.entries(o.inningRuns||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});const aggER=fo.reduce((acc,o)=>{Object.entries(o.earnedRunsByInning||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});const filtPs=ana.handFilter==='all'?ps:ps.filter(p=>p.hand===ana.handFilter);const filtAs=ana.handFilter==='all'?as:as.filter(ab=>ab.hand===ana.handFilter);return{pitches:ps,atBats:as,filtPitches:filtPs,filtAtBats:filtAs,stats:computeStats(ps,as,aggRuns,aggER),filtStats:computeStats(filtPs,filtAs),outings:fo};},[outings,ana]);
 
   const card=(x={})=>({background:'linear-gradient(135deg,#111827 0%,#0f172a 100%)',borderRadius:'10px',border:'1px solid #1e3a5f',padding:'14px',...x});
   const inp={background:'#060d1a',border:'1px solid #1e3a5f',borderRadius:'6px',padding:'7px 10px',color:'#e2e8f0',fontSize:'13px',outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
@@ -384,14 +358,12 @@ export default function App(){
                     <div style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px'}}>Runs — Inn {inning}</div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
                       {[{label:'Total',state:inningRuns,setter:setInningRuns,color:'#f43f5e'},{label:'Earned',state:earnedRunsByInning,setter:setEarnedRunsByInning,color:'#f97316'}].map(({label,state,setter,color})=>(
-                        <div key={label}>
-                          <div style={{fontSize:'8px',color:'#475569',fontWeight:'700',marginBottom:'3px',textTransform:'uppercase'}}>{label}</div>
-                          <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
-                            <button onClick={()=>setter(prev=>({...prev,[inning]:Math.max(0,(prev[inning]||0)-1)}))} disabled={!active} style={{width:'22px',height:'22px',borderRadius:'4px',border:'1px solid #1e3a5f',background:'transparent',color:'#64748b',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900'}}>−</button>
-                            <div style={{flex:1,textAlign:'center',fontSize:'18px',fontWeight:'900',color,fontFamily:'monospace'}}>{state[inning]||0}</div>
-                            <button onClick={()=>setter(prev=>({...prev,[inning]:(prev[inning]||0)+1}))} disabled={!active} style={{width:'22px',height:'22px',borderRadius:'4px',border:`1px solid ${color}`,background:`${color}15`,color,cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900'}}>+</button>
-                          </div>
-                        </div>
+                        <div key={label}><div style={{fontSize:'8px',color:'#475569',fontWeight:'700',marginBottom:'3px',textTransform:'uppercase'}}>{label}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                          <button onClick={()=>setter(prev=>({...prev,[inning]:Math.max(0,(prev[inning]||0)-1)}))} disabled={!active} style={{width:'22px',height:'22px',borderRadius:'4px',border:'1px solid #1e3a5f',background:'transparent',color:'#64748b',cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900'}}>−</button>
+                          <div style={{flex:1,textAlign:'center',fontSize:'18px',fontWeight:'900',color,fontFamily:'monospace'}}>{state[inning]||0}</div>
+                          <button onClick={()=>setter(prev=>({...prev,[inning]:(prev[inning]||0)+1}))} disabled={!active} style={{width:'22px',height:'22px',borderRadius:'4px',border:`1px solid ${color}`,background:`${color}15`,color,cursor:'pointer',fontSize:'14px',lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'900'}}>+</button>
+                        </div></div>
                       ))}
                     </div>
                     {Object.keys(inningRuns).filter(i=>inningRuns[i]>0).length>0&&(
@@ -409,10 +381,7 @@ export default function App(){
                   {atBats.filter(ab=>ab.result==='BB').map((ab,i)=>(
                     <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid #0f172a',fontSize:'11px'}}>
                       <span style={{color:'#64748b'}}>Inn {ab.inning} • BB {ab.leadoff?<span style={{color:'#f59e0b'}}>(Leadoff)</span>:null}</span>
-                      <label style={{display:'flex',alignItems:'center',gap:'4px',cursor:'pointer',color:'#94a3b8'}}>
-                        <input type="checkbox" checked={!!ab.scored} onChange={e=>{setAtBats(prev=>prev.map(a=>a.id===ab.id?{...a,scored:e.target.checked}:a))}} style={{accentColor:'#f43f5e',width:'12px',height:'12px'}}/>
-                        <span style={{fontSize:'10px'}}>Scored</span>
-                      </label>
+                      <label style={{display:'flex',alignItems:'center',gap:'4px',cursor:'pointer',color:'#94a3b8'}}><input type="checkbox" checked={!!ab.scored} onChange={e=>{setAtBats(prev=>prev.map(a=>a.id===ab.id?{...a,scored:e.target.checked}:a))}} style={{accentColor:'#f43f5e',width:'12px',height:'12px'}}/><span style={{fontSize:'10px'}}>Scored</span></label>
                     </div>
                   ))}
                 </div>
@@ -434,7 +403,18 @@ export default function App(){
                   <div style={{fontWeight:'800',fontSize:'10px',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px'}}>In-Play Details</div>
                   <div style={{marginBottom:'10px'}}><span style={lbl}>Hit Type</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HT.map(({k,l})=><button key={k} onClick={()=>setPend(p=>({...p,hitType:k}))} style={{...tog(k,pend.hitType,'#475569'),padding:'5px 10px'}}>{l}</button>)}</div></div>
                   <div style={{marginBottom:'10px'}}><span style={lbl}>Strength</span><div style={{display:'flex',gap:'4px'}}>{HS.map(({k,l})=>{const sc=k==='Weak'?'#22c55e':k==='Hard'?'#ef4444':'#f59e0b';return <button key={k} onClick={()=>setPend(p=>({...p,hitStr:k}))} style={{...tog(k,pend.hitStr,sc),padding:'5px 11px'}}>{l}</button>})}</div></div>
-                  <div><span style={lbl}>Outcome</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HR_.map(({k,l,c})=><button key={k} onClick={()=>setPend(p=>({...p,hitResult:k}))} style={{...tog(k,pend.hitResult,c),padding:'5px 10px'}}>{l}</button>)}</div></div>
+                  <div style={{marginBottom:'10px'}}><span style={lbl}>Outcome</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HR_.map(({k,l,c})=><button key={k} onClick={()=>setPend(p=>({...p,hitResult:k}))} style={{...tog(k,pend.hitResult,c),padding:'5px 10px'}}>{l}</button>)}</div></div>
+                  {/* SPRAY CHART INPUT */}
+                  <div>
+                    <span style={lbl}>Hit Location <span style={{color:'#334155',fontWeight:'500',textTransform:'none',letterSpacing:'0',fontSize:'8px'}}>(tap field — optional)</span></span>
+                    <SprayChart pitches={[]} onClickField={(x,y)=>setPend(p=>({...p,sprayX:x,sprayY:y}))} pendingSpray={pend.sprayX!=null?{x:pend.sprayX,y:pend.sprayY}:null}/>
+                    {pend.sprayX!=null&&(
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'4px'}}>
+                        <span style={{fontSize:'9px',color:'#22c55e',fontWeight:'700'}}>✓ Location marked</span>
+                        <button onClick={()=>setPend(p=>({...p,sprayX:null,sprayY:null}))} style={{fontSize:'9px',color:'#475569',background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Clear</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               <div style={{display:'flex',gap:'14px',marginBottom:'14px',padding:'8px 10px',background:'#060d1a',borderRadius:'6px',border:'1px solid #1e3a5f',flexWrap:'wrap',alignItems:'center'}}>
@@ -540,15 +520,10 @@ export default function App(){
                         [{v:s.bbInn,l:'BB/INN'},{v:s.lobb,l:'LOBB'},{v:s.lobbS,l:'LOBBS'},{v:s.bbsS,l:'BBS'},{v:s.dps,l:'DP'},{v:s.hrs,l:'HR'}],
                         [{v:s.whiffPct,l:'WHIFF%'},{v:s.weakPct,l:'WEAK%'},{v:s.hhbPct,l:'HHB%'},{v:s.fbPct,l:'FB%'},{v:s.gbPct,l:'GB%'},{v:s.ks,l:"K's"}],
                         [{v:s.babip,l:'BABIP'},{v:s.baRisp,l:'BA/RISP'},{v:s.outs,l:'Outs'},{v:null,l:''},{v:null,l:''},{v:null,l:''}],
-                      ].map((row,ri)=>(
-                        <div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'6px'}}>
-                          {row.map(({v,l,ac},ci)=>v!==null?<StatBox key={ci} v={v} l={l} accent={ac||(l.includes('BB')||l==='LOBBS'||l==='LOBB'?'#f59e0b':l==="K's"||l==='BABIP'||l==='BA/RISP'?'#f43f5e':undefined)}/>:<div key={ci}/>)}
-                        </div>
-                      ))}
+                      ].map((row,ri)=>(<div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'6px'}}>{row.map(({v,l,ac},ci)=>v!==null?<StatBox key={ci} v={v} l={l} accent={ac||(l.includes('BB')||l==='LOBBS'||l==='LOBB'?'#f59e0b':l==="K's"||l==='BABIP'||l==='BA/RISP'?'#f43f5e':undefined)}/>:<div key={ci}/>)}</div>))}
                     </div>
                   )})()}
                 </div>
-
                 <div style={card()}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                     <span>Heat Map</span>
@@ -559,13 +534,45 @@ export default function App(){
                     <button onClick={()=>setAna(p=>({...p,filterType:'all'}))} style={{...tog('all',ana.filterType,'#475569'),fontSize:'10px',padding:'3px 8px'}}>All</button>
                     {PT.filter(t=>(anaData.filtPitches||anaData.pitches).some(p=>p.type===t)).map(t=>(<button key={t} onClick={()=>setAna(p=>({...p,filterType:t}))} style={{...tog(t,ana.filterType,PC[t]),fontSize:'10px',padding:'3px 7px'}}>{t}</button>))}
                   </div>
-                  <label style={{display:'flex',alignItems:'center',gap:'5px',cursor:'pointer',fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700'}}>
-                    <input type="checkbox" checked={ana.hitsOnly} onChange={e=>setAna(p=>({...p,hitsOnly:e.target.checked}))} style={{accentColor:'#f43f5e',width:'12px',height:'12px'}}/>Hits Only
-                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:'5px',cursor:'pointer',fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700'}}><input type="checkbox" checked={ana.hitsOnly} onChange={e=>setAna(p=>({...p,hitsOnly:e.target.checked}))} style={{accentColor:'#f43f5e',width:'12px',height:'12px'}}/>Hits Only</label>
                   {ana.heatMode==='density'?<DensityZone pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>:<ZoneView pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>}
                   <div style={{display:'flex',flexWrap:'wrap',gap:'5px',marginTop:'8px'}}>{PT.filter(t=>(anaData.filtPitches||anaData.pitches).some(p=>p.type===t)).map(t=>(<div key={t} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px',color:'#475569'}}><div style={{width:'7px',height:'7px',borderRadius:'50%',background:PC[t]}}/>{PL[t]}</div>))}</div>
                 </div>
               </div>
+
+              {/* SPRAY CHART SECTION */}
+              {anaData.pitches.some(p=>p.result==='InPlay'&&p.sprayX!=null)&&(
+                <div style={{...card({marginBottom:'14px'})}}>
+                  <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontFamily:'"Space Grotesk",sans-serif',display:'flex',alignItems:'center',gap:'10px'}}>
+                    Spray Chart
+                    <div style={{display:'flex',gap:'4px',marginLeft:'auto'}}>
+                      <button onClick={()=>setAna(p=>({...p,sprayFilter:'all'}))} style={{...tog('all',ana.sprayFilter,'#475569'),fontSize:'9px',padding:'2px 8px'}}>All</button>
+                      {PT.filter(t=>anaData.pitches.some(p=>p.type===t&&p.result==='InPlay'&&p.sprayX!=null)).map(t=>(<button key={t} onClick={()=>setAna(p=>({...p,sprayFilter:t}))} style={{...tog(t,ana.sprayFilter,PC[t]),fontSize:'9px',padding:'2px 6px'}}>{t}</button>))}
+                    </div>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'220px 1fr',gap:'16px',alignItems:'start'}}>
+                    <SprayChart pitches={anaData.pitches} filterType={ana.sprayFilter}/>
+                    <div>
+                      <div style={{fontSize:'9px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'8px'}}>In-Play Results by Pitch</div>
+                      {PT.filter(t=>anaData.pitches.some(p=>p.type===t&&p.result==='InPlay'&&p.sprayX!=null)).map(t=>{
+                        const bip=anaData.pitches.filter(p=>p.type===t&&p.result==='InPlay'&&p.sprayX!=null);
+                        const hitPs=bip.filter(p=>['1B','2B','3B','HR'].includes(p.hitResult));
+                        return(<div key={t} style={{display:'flex',alignItems:'center',gap:'7px',marginBottom:'6px',fontSize:'11px',fontFamily:'monospace'}}>
+                          <span style={{background:PC[t],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'26px',textAlign:'center'}}>{t}</span>
+                          <span style={{color:'#f43f5e',fontWeight:'800'}}>{hitPs.length}H</span>
+                          <span style={{color:'#334155'}}>/ {bip.length} BIP</span>
+                          <span style={{color:'#475569',fontSize:'9px'}}>({bip.length>0?Math.round(hitPs.length/bip.length*100):0}%)</span>
+                          <div style={{display:'flex',gap:'3px',marginLeft:'auto'}}>{['1B','2B','3B','HR'].map(hr=>{const n=hitPs.filter(p=>p.hitResult===hr).length;return n>0?<span key={hr} style={{fontSize:'9px',color:'#94a3b8',background:'#0a1929',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}}>{hr}×{n}</span>:null})}</div>
+                        </div>);
+                      })}
+                      <div style={{marginTop:'10px',fontSize:'9px',color:'#334155',display:'flex',gap:'12px'}}>
+                        <span><span style={{color:'#22c55e',fontWeight:'700'}}>Large dot</span> = Hit</span>
+                        <span><span style={{color:'#64748b',fontWeight:'700'}}>Small dot</span> = Out</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {anaData.stats&&(anaData.stats.lSplit||anaData.stats.rSplit)&&(
                 <div style={{...card({marginBottom:'14px'})}}>
@@ -596,14 +603,7 @@ export default function App(){
                     const usedTypes=PT.filter(t=>mix.byType[t]?.pct>0).sort((a,b)=>(mix.byType[b]?.pct||0)-(mix.byType[a]?.pct||0));
                     return(
                       <div key={c} style={{marginBottom:'10px',padding:'8px',background:'#060d1a',borderRadius:'6px',border:'1px solid #0d1f33',opacity:mix.total===0?0.35:1}}>
-                        <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px'}}>
-                          <span style={{fontSize:'13px',fontWeight:'900',color:'#e2e8f0',fontFamily:'monospace',minWidth:'30px'}}>{c}</span>
-                          <span style={{fontSize:'10px',color:'#475569',fontWeight:'700'}}>{mix.total}p · {d.n}AB</span>
-                          <div style={{marginLeft:'auto',display:'flex',gap:'6px'}}>
-                            {outPct!=null&&<span style={{fontSize:'10px',fontWeight:'800',color:outPct>=60?'#22c55e':outPct>=40?'#f59e0b':'#ef4444',background:outPct>=60?'rgba(34,197,94,0.08)':outPct>=40?'rgba(245,158,11,0.08)':'rgba(239,68,68,0.08)',padding:'1px 5px',borderRadius:'3px'}}>{outPct}% OUT</span>}
-                            {hitPct!=null&&hitPct>0&&<span style={{fontSize:'10px',fontWeight:'800',color:'#f43f5e',background:'rgba(244,63,94,0.08)',padding:'1px 5px',borderRadius:'3px'}}>{hitPct}% HIT</span>}
-                          </div>
-                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'6px'}}><span style={{fontSize:'13px',fontWeight:'900',color:'#e2e8f0',fontFamily:'monospace',minWidth:'30px'}}>{c}</span><span style={{fontSize:'10px',color:'#475569',fontWeight:'700'}}>{mix.total}p · {d.n}AB</span><div style={{marginLeft:'auto',display:'flex',gap:'6px'}}>{outPct!=null&&<span style={{fontSize:'10px',fontWeight:'800',color:outPct>=60?'#22c55e':outPct>=40?'#f59e0b':'#ef4444',background:outPct>=60?'rgba(34,197,94,0.08)':outPct>=40?'rgba(245,158,11,0.08)':'rgba(239,68,68,0.08)',padding:'1px 5px',borderRadius:'3px'}}>{outPct}% OUT</span>}{hitPct!=null&&hitPct>0&&<span style={{fontSize:'10px',fontWeight:'800',color:'#f43f5e',background:'rgba(244,63,94,0.08)',padding:'1px 5px',borderRadius:'3px'}}>{hitPct}% HIT</span>}</div></div>
                         {mix.total>0?(<div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
                           <div><div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'3px'}}>Pitch Selection</div><div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',gap:'1px'}}>{usedTypes.map(t=>(<div key={t} style={{width:mix.byType[t].pct+'%',background:PC[t],minWidth:mix.byType[t].pct>0?'3px':0,transition:'width 0.3s'}} title={`${t}: ${mix.byType[t].pct}%`}/>))}</div><div style={{display:'flex',flexWrap:'wrap',gap:'4px',marginTop:'3px'}}>{usedTypes.map(t=>(<div key={t} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:PC[t],flexShrink:0}}/><span style={{color:'#e2e8f0',fontWeight:'800',fontFamily:'monospace'}}>{t}</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.byType[t].pct}%</span></div>))}</div></div>
                           <div><div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'3px'}}>Next Pitch Result</div><div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',gap:'1px'}}>{mix.strikePct>0&&<div style={{width:mix.strikePct+'%',background:'#22c55e',minWidth:'3px',transition:'width 0.3s'}}/>}{mix.ballPct>0&&<div style={{width:mix.ballPct+'%',background:'#ef4444',minWidth:'3px',transition:'width 0.3s'}}/>}{mix.inPlayPct>0&&<div style={{width:mix.inPlayPct+'%',background:'#f59e0b',minWidth:'3px',transition:'width 0.3s'}}/>}</div><div style={{display:'flex',gap:'8px',marginTop:'3px'}}>{mix.strikePct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#22c55e',flexShrink:0}}/><span style={{color:'#22c55e',fontWeight:'800'}}>Strike</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.strikePct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nStrike})</span></div>}{mix.ballPct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#ef4444',flexShrink:0}}/><span style={{color:'#ef4444',fontWeight:'800'}}>Ball</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.ballPct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nBall})</span></div>}{mix.inPlayPct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#f59e0b',flexShrink:0}}/><span style={{color:'#f59e0b',fontWeight:'800'}}>In Play</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.inPlayPct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nInPlay})</span></div>}</div></div>
@@ -612,40 +612,14 @@ export default function App(){
                     );
                   })}
                 </div>
-
                 <div style={card()}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'12px'}}>Pitch Arsenal</div>
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',fontFamily:'monospace'}}>
                     <thead><tr>{['Pitch','#','Usage','Whiff%','AvgVel','Balls'].map(h=><th key={h} style={{textAlign:'left',padding:'5px 8px',borderBottom:'1px solid #1e3a5f',color:'#334155',fontWeight:'800',fontSize:'9px',letterSpacing:'0.5px'}}>{h}</th>)}</tr></thead>
                     <tbody>
-                      {anaData.stats&&PT.filter(t=>anaData.stats.ptBreak[t]?.n>0).sort((a,b)=>anaData.stats.ptBreak[b].n-anaData.stats.ptBreak[a].n).map(t=>{
-                        const d=anaData.stats.ptBreak[t];
-                        return(<tr key={t} style={{borderBottom:'1px solid #0a1929'}}>
-                          <td style={{padding:'6px 8px'}}><span style={{background:PC[t],color:'#fff',padding:'2px 6px',borderRadius:'3px',fontWeight:'800',fontSize:'10px'}}>{t}</span><span style={{marginLeft:'5px',color:'#334155',fontSize:'10px'}}>{PL[t]}</span></td>
-                          <td style={{padding:'6px 8px',color:'#64748b'}}>{d.n}</td>
-                          <td style={{padding:'6px 8px'}}><div style={{display:'flex',alignItems:'center',gap:'5px'}}><div style={{width:'50px',height:'5px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}><div style={{width:d.pct+'%',height:'100%',background:PC[t],borderRadius:'3px'}}/></div><span style={{color:'#e2e8f0',fontWeight:'700',fontSize:'11px'}}>{d.pct}%</span></div></td>
-                          <td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.whiff/d.n*100)>=25?'#22c55e':'#64748b',fontWeight:'700'}}>{d.n>0?Math.round(d.whiff/d.n*100)+'%':'—'}</td>
-                          <td style={{padding:'6px 8px',color:'#e2e8f0',fontWeight:'800'}}>{d.avgVel||'—'}</td>
-                          <td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.ball/d.n*100)>=40?'#f43f5e':'#64748b'}}>{d.n>0?Math.round(d.ball/d.n*100)+'%':'—'}</td>
-                        </tr>);
-                      })}
+                      {anaData.stats&&PT.filter(t=>anaData.stats.ptBreak[t]?.n>0).sort((a,b)=>anaData.stats.ptBreak[b].n-anaData.stats.ptBreak[a].n).map(t=>{const d=anaData.stats.ptBreak[t];return(<tr key={t} style={{borderBottom:'1px solid #0a1929'}}><td style={{padding:'6px 8px'}}><span style={{background:PC[t],color:'#fff',padding:'2px 6px',borderRadius:'3px',fontWeight:'800',fontSize:'10px'}}>{t}</span><span style={{marginLeft:'5px',color:'#334155',fontSize:'10px'}}>{PL[t]}</span></td><td style={{padding:'6px 8px',color:'#64748b'}}>{d.n}</td><td style={{padding:'6px 8px'}}><div style={{display:'flex',alignItems:'center',gap:'5px'}}><div style={{width:'50px',height:'5px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}><div style={{width:d.pct+'%',height:'100%',background:PC[t],borderRadius:'3px'}}/></div><span style={{color:'#e2e8f0',fontWeight:'700',fontSize:'11px'}}>{d.pct}%</span></div></td><td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.whiff/d.n*100)>=25?'#22c55e':'#64748b',fontWeight:'700'}}>{d.n>0?Math.round(d.whiff/d.n*100)+'%':'—'}</td><td style={{padding:'6px 8px',color:'#e2e8f0',fontWeight:'800'}}>{d.avgVel||'—'}</td><td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.ball/d.n*100)>=40?'#f43f5e':'#64748b'}}>{d.n>0?Math.round(d.ball/d.n*100)+'%':'—'}</td></tr>);})}
                     </tbody>
                   </table>
-                  {anaData.pitches.some(p=>p.result==='InPlay'&&['1B','2B','3B','HR'].includes(p.hitResult))&&(
-                    <div style={{marginTop:'14px',borderTop:'1px solid #1e3a5f',paddingTop:'12px'}}>
-                      <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px'}}>Location of Hits by Pitch Type</div>
-                      {PT.filter(t=>anaData.pitches.some(p=>p.type===t&&p.result==='InPlay'&&['1B','2B','3B','HR'].includes(p.hitResult))).map(t=>{
-                        const all=anaData.pitches.filter(p=>p.type===t).length;
-                        const hitPs=anaData.pitches.filter(p=>p.type===t&&p.result==='InPlay'&&['1B','2B','3B','HR'].includes(p.hitResult));
-                        return(<div key={t} style={{display:'flex',alignItems:'center',gap:'7px',marginBottom:'6px',fontSize:'11px',fontFamily:'monospace'}}>
-                          <span style={{background:PC[t],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'26px',textAlign:'center'}}>{t}</span>
-                          <span style={{color:'#f43f5e',fontWeight:'800'}}>{hitPs.length}H</span>
-                          <span style={{color:'#334155'}}>({all>0?Math.round(hitPs.length/all*100):0}%)</span>
-                          <div style={{display:'flex',gap:'3px',marginLeft:'auto'}}>{['1B','2B','3B','HR'].map(hr=>{const n=hitPs.filter(p=>p.hitResult===hr).length;return n>0?<span key={hr} style={{fontSize:'9px',color:'#94a3b8',background:'#0a1929',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}}>{hr}×{n}</span>:null})}</div>
-                        </div>);
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
             </>
