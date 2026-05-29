@@ -240,7 +240,23 @@ export default function App(){
     setPend({...INIT_P});
   },[pend,pitches,atBats,curAB,inning]);
 
-  const handleUndo=()=>{if(!curAB.pitches.length)return;const np=curAB.pitches.slice(0,-1);const nc=np.reduce((c,p)=>advCnt(c,p.result),{b:0,s:0});setCurAB(prev=>({...prev,pitches:np,cnt:nc}));setPitches(prev=>prev.slice(0,-1))};
+  // ── FEATURE 5: Undo across at-bat boundaries ──
+  const handleUndo=()=>{
+    if(curAB.pitches.length>0){
+      const np=curAB.pitches.slice(0,-1);
+      const nc=np.reduce((c,p)=>advCnt(c,p.result),{b:0,s:0});
+      setCurAB(prev=>({...prev,pitches:np,cnt:nc}));
+      setPitches(prev=>prev.slice(0,-1));
+    } else if(atBats.length>0){
+      const lastAB=atBats[atBats.length-1];
+      const restoredPitches=lastAB.pitches.slice(0,-1);
+      const restoredCnt=restoredPitches.reduce((c,p)=>advCnt(c,p.result),{b:0,s:0});
+      setAtBats(prev=>prev.slice(0,-1));
+      setCurAB({...lastAB,pitches:restoredPitches,cnt:restoredCnt,result:null});
+      setPitches(prev=>prev.slice(0,-1));
+    }
+  };
+
   const handleNewInning=()=>{const n=inning+1;setInning(n);setRunners({...INIT_RUNNERS});setCurAB(mkAB(n,true))};
   const handleEndOuting=()=>{
     const saved={id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',pitches,atBats,inning,inningRuns,earnedRunsByInning};
@@ -258,6 +274,7 @@ export default function App(){
   const StatBox=({v,l,accent})=>(<div style={{textAlign:'center',padding:'10px 6px',background:'#060d1a',borderRadius:'8px',border:'1px solid #1e3a5f'}}><div style={{fontSize:'18px',fontWeight:'900',color:accent||'#e2e8f0',lineHeight:1,fontFamily:'monospace',letterSpacing:'-1px'}}>{v||'—'}</div><div style={{fontSize:'9px',color:'#475569',marginTop:'3px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.8px'}}>{l}</div></div>);
   const tog=(v,cur,c='#3b82f6')=>({padding:'5px 11px',borderRadius:'5px',border:`1.5px solid ${c}`,cursor:'pointer',fontSize:'11px',fontWeight:'800',background:cur===v?c:'transparent',color:cur===v?'#fff':c,transition:'all 0.12s',fontFamily:'inherit'});
   const resultColor=(r)=>{if(!r)return'#475569';if(['1B','2B','3B','HR'].includes(r))return'#22c55e';if(r==='BB')return'#f59e0b';if(['K','KL'].includes(r))return'#ef4444';if(r==='HBP')return'#a78bfa';if(r==='DP')return'#f97316';return'#64748b'};
+  const canUndo=curAB.pitches.length>0||atBats.length>0;
 
   if(authLoading)return(<div style={{background:'#030712',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#475569',fontSize:'14px',fontFamily:'monospace'}}>Loading...</div></div>);
 
@@ -404,16 +421,10 @@ export default function App(){
                   <div style={{marginBottom:'10px'}}><span style={lbl}>Hit Type</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HT.map(({k,l})=><button key={k} onClick={()=>setPend(p=>({...p,hitType:k}))} style={{...tog(k,pend.hitType,'#475569'),padding:'5px 10px'}}>{l}</button>)}</div></div>
                   <div style={{marginBottom:'10px'}}><span style={lbl}>Strength</span><div style={{display:'flex',gap:'4px'}}>{HS.map(({k,l})=>{const sc=k==='Weak'?'#22c55e':k==='Hard'?'#ef4444':'#f59e0b';return <button key={k} onClick={()=>setPend(p=>({...p,hitStr:k}))} style={{...tog(k,pend.hitStr,sc),padding:'5px 11px'}}>{l}</button>})}</div></div>
                   <div style={{marginBottom:'10px'}}><span style={lbl}>Outcome</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HR_.map(({k,l,c})=><button key={k} onClick={()=>setPend(p=>({...p,hitResult:k}))} style={{...tog(k,pend.hitResult,c),padding:'5px 10px'}}>{l}</button>)}</div></div>
-                  {/* SPRAY CHART INPUT */}
                   <div>
                     <span style={lbl}>Hit Location <span style={{color:'#334155',fontWeight:'500',textTransform:'none',letterSpacing:'0',fontSize:'8px'}}>(tap field — optional)</span></span>
                     <SprayChart pitches={[]} onClickField={(x,y)=>setPend(p=>({...p,sprayX:x,sprayY:y}))} pendingSpray={pend.sprayX!=null?{x:pend.sprayX,y:pend.sprayY}:null}/>
-                    {pend.sprayX!=null&&(
-                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'4px'}}>
-                        <span style={{fontSize:'9px',color:'#22c55e',fontWeight:'700'}}>✓ Location marked</span>
-                        <button onClick={()=>setPend(p=>({...p,sprayX:null,sprayY:null}))} style={{fontSize:'9px',color:'#475569',background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Clear</button>
-                      </div>
-                    )}
+                    {pend.sprayX!=null&&(<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:'4px'}}><span style={{fontSize:'9px',color:'#22c55e',fontWeight:'700'}}>✓ Location marked</span><button onClick={()=>setPend(p=>({...p,sprayX:null,sprayY:null}))} style={{fontSize:'9px',color:'#475569',background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit'}}>Clear</button></div>)}
                   </div>
                 </div>
               )}
@@ -426,7 +437,9 @@ export default function App(){
                 ⚾ LOG PITCH{pend.type?` · ${pend.type}`:''}  {pend.vel?`· ${pend.vel} mph`:''}
               </button>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
-                <button onClick={handleUndo} disabled={!curAB.pitches.length} style={{padding:'7px',borderRadius:'6px',border:'1px solid #1e3a5f',cursor:'pointer',fontWeight:'700',fontSize:'11px',background:'transparent',color:'#64748b',opacity:curAB.pitches.length?1:0.4,fontFamily:'inherit'}}>↩ Undo</button>
+                <button onClick={handleUndo} disabled={!canUndo} style={{padding:'7px',borderRadius:'6px',border:'1px solid #1e3a5f',cursor:'pointer',fontWeight:'700',fontSize:'11px',background:'transparent',color:canUndo?'#f59e0b':'#64748b',opacity:canUndo?1:0.4,fontFamily:'inherit'}}>
+                  ↩ Undo{!curAB.pitches.length&&atBats.length>0?' Last AB':''}
+                </button>
                 <button onClick={handleNewInning} disabled={!active} style={{padding:'7px',borderRadius:'6px',border:'1px solid #1e3a5f',cursor:'pointer',fontWeight:'700',fontSize:'11px',background:'transparent',color:'#64748b',opacity:active?1:0.4,fontFamily:'inherit'}}>→ New Inning ({inning+1})</button>
               </div>
             </div>
@@ -540,7 +553,6 @@ export default function App(){
                 </div>
               </div>
 
-              {/* SPRAY CHART SECTION */}
               {anaData.pitches.some(p=>p.result==='InPlay'&&p.sprayX!=null)&&(
                 <div style={{...card({marginBottom:'14px'})}}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'12px',fontFamily:'"Space Grotesk",sans-serif',display:'flex',alignItems:'center',gap:'10px'}}>
@@ -565,10 +577,7 @@ export default function App(){
                           <div style={{display:'flex',gap:'3px',marginLeft:'auto'}}>{['1B','2B','3B','HR'].map(hr=>{const n=hitPs.filter(p=>p.hitResult===hr).length;return n>0?<span key={hr} style={{fontSize:'9px',color:'#94a3b8',background:'#0a1929',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}}>{hr}×{n}</span>:null})}</div>
                         </div>);
                       })}
-                      <div style={{marginTop:'10px',fontSize:'9px',color:'#334155',display:'flex',gap:'12px'}}>
-                        <span><span style={{color:'#22c55e',fontWeight:'700'}}>Large dot</span> = Hit</span>
-                        <span><span style={{color:'#64748b',fontWeight:'700'}}>Small dot</span> = Out</span>
-                      </div>
+                      <div style={{marginTop:'10px',fontSize:'9px',color:'#334155',display:'flex',gap:'12px'}}><span><span style={{color:'#22c55e',fontWeight:'700'}}>Large dot</span> = Hit</span><span><span style={{color:'#64748b',fontWeight:'700'}}>Small dot</span> = Out</span></div>
                     </div>
                   </div>
                 </div>
