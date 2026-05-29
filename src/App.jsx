@@ -25,7 +25,32 @@ const HR_=[{k:'Out',l:'Out',c:'#64748b'},{k:'DP',l:'Dbl Play',c:'#f97316'},{k:'1
 const COUNTS=['0-0','0-1','0-2','1-0','1-1','1-2','2-0','2-1','2-2','3-0','3-1','3-2'];
 const ANA_VIEWS=[{k:'all',l:'All'},{k:'stats',l:'Season Stats'},{k:'heatmap',l:'Heat Map'},{k:'splits',l:'L/R Splits'},{k:'counts',l:'Count Breakdown'},{k:'sequences',l:'Pitch Sequences'},{k:'spray',l:'Spray Chart'},{k:'arsenal',l:'Arsenal'}];
 
-function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={}){
+// ── PDF REPORT GENERATOR ──
+const generateReportHTML=(outing,stats)=>{
+  if(!stats)return'';
+  const be=outing.baseEvents||[];
+  const sbA=be.filter(e=>e.type==='SB').length;
+  const csO=be.filter(e=>e.type==='CS').length;
+  const poAt=be.filter(e=>e.type==='PO_ATT').length;
+  const poOt=be.filter(e=>e.type==='PO_OUT').length;
+  const sbPct=(sbA+csO)>0?Math.round(sbA/(sbA+csO)*100)+'%':'—';
+  const arsenalRows=PT.filter(t=>stats.ptBreak[t]?.n>0).sort((a,b)=>stats.ptBreak[b].n-stats.ptBreak[a].n).map(t=>{const d=stats.ptBreak[t];return`<tr><td style="font-weight:700">${PL[t]} <span style="color:#888">(${t})</span></td><td>${d.n}</td><td>${d.pct}%</td><td style="font-weight:700">${d.avgVel||'—'}</td><td style="color:${d.n>0&&Math.round(d.whiff/d.n*100)>=25?'#16a34a':'inherit'}">${d.n>0?Math.round(d.whiff/d.n*100)+'%':'—'}</td><td>${d.n>0?Math.round(d.ball/d.n*100)+'%':'—'}</td></tr>`}).join('');
+  const beRows=be.map(e=>`<tr><td>${e.inning}</td><td>${e.type==='SB'?'⬥ Stolen Base':e.type==='CS'?'✓ Caught Stealing':e.type==='PO_ATT'?'◌ Pickoff (Safe)':'✓ Pickoff Out'}</td><td>${e.type==='SB'?'Stole '+e.base:e.type==='CS'?'CS at '+e.base:'at '+e.base}</td></tr>`).join('');
+  const pitchRows=outing.pitches.map((p,i)=>`<tr><td>${i+1}</td><td>${p.inning}</td><td>${p.cntBefore?.b||0}-${p.cntBefore?.s||0}</td><td>${p.hand||'R'}</td><td style="font-weight:700">${p.type}</td><td>${p.vel||'—'}</td><td>${p.zone||'B'}</td><td>${p.result==='StrikeL'?'Called K':p.result==='StrikeS'?'Swing K':p.result}</td><td>${p.hitResult||p.hitType||'—'}</td></tr>`).join('');
+  const splitSection=stats.lSplit||stats.rSplit?`<div class="section"><div class="section-title">L / R Splits</div><div class="splits-grid">${[{hand:'L',split:stats.lSplit,color:'#2563eb'},{hand:'R',split:stats.rSplit,color:'#d97706'}].map(({hand,split,color})=>`<div class="split-box"><div class="split-hand" style="color:${color}">${hand}HH ${split?`· ${split.bf} AB`:'· No data'}</div>${split?`<div class="split-stats">${[{v:split.ba,l:'BA'},{v:split.kPct,l:'K%'},{v:split.bbPct,l:'BB%'},{v:split.whiffPct,l:'Whiff%'},{v:split.gbPct,l:'GB%'},{v:split.fbPct,l:'FB%'}].map(({v,l})=>`<div class="stat-box"><div class="stat-val" style="font-size:13px">${v||'—'}</div><div class="stat-lbl">${l}</div></div>`).join('')}</div><div style="font-size:10px;color:#666;margin-top:6px">Mix: ${PT.filter(t=>split.ptBk[t]?.n>0).sort((a,b)=>split.ptBk[b].n-split.ptBk[a].n).map(t=>`${t} ${split.ptBk[t].pct}%`).join(' · ')}</div>`:'<div style="color:#aaa;font-style:italic">No data</div>'}</div>`).join('')}</div></div>`:'';
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PitchTrack — ${outing.pitcher} — ${outing.date}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#111;background:#fff;padding:24px;font-size:12px;line-height:1.4}h1{font-size:20px;font-weight:900;letter-spacing:-0.5px}.sub{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:12px;border-bottom:3px solid #111}.outing-meta{text-align:right}.outing-meta .name{font-size:18px;font-weight:900}.outing-meta .det{font-size:11px;color:#555;margin-top:2px}.section{margin-bottom:18px}.section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e5e5e5}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}.stat-box{text-align:center;padding:8px 4px;border:1px solid #e5e5e5;border-radius:4px}.stat-val{font-size:17px;font-weight:900;line-height:1}.stat-lbl{font-size:8px;color:#888;margin-top:2px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}.base-row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}.base-item{text-align:center;min-width:60px}.base-val{font-size:24px;font-weight:900}.base-lbl{font-size:9px;color:#888;font-weight:700;text-transform:uppercase}table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:left;padding:5px 8px;background:#111;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px}td{padding:4px 8px;border-bottom:1px solid #f0f0f0}tr:nth-child(even) td{background:#fafafa}.splits-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.split-box{border:1px solid #e5e5e5;border-radius:6px;padding:10px}.split-hand{font-size:16px;font-weight:900;margin-bottom:8px}.split-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e5e5;font-size:9px;color:#aaa;text-align:center}@media print{body{padding:12px}@page{margin:1.5cm}}</style></head><body>
+<div class="header"><div><h1>⚾ PitchTrack Pro</h1><div class="sub">Outing Report</div></div><div class="outing-meta"><div class="name">${outing.pitcher}</div><div class="det">${outing.date} · vs ${outing.opponent||'Opponent'}</div><div class="det">${stats.ip} IP · ${outing.pitches.length} pitches · ${stats.bf} BF</div></div></div>
+<div class="section"><div class="section-title">Outing Summary</div><div class="stats-grid"><div class="stat-box"><div class="stat-val">${stats.ip}</div><div class="stat-lbl">IP</div></div><div class="stat-box"><div class="stat-val">${stats.era}</div><div class="stat-lbl">ERA</div></div><div class="stat-box"><div class="stat-val">${stats.kbb}</div><div class="stat-lbl">K/BB</div></div><div class="stat-box"><div class="stat-val">${stats.ks}</div><div class="stat-lbl">K's</div></div><div class="stat-box"><div class="stat-val">${stats.walks}</div><div class="stat-lbl">BB</div></div><div class="stat-box"><div class="stat-val">${stats.hits}</div><div class="stat-lbl">Hits</div></div><div class="stat-box"><div class="stat-val">${stats.totalRuns}</div><div class="stat-lbl">Runs</div></div><div class="stat-box"><div class="stat-val">${stats.totalEarnedRuns}</div><div class="stat-lbl">ER</div></div><div class="stat-box"><div class="stat-val">${stats.lobPct}</div><div class="stat-lbl">LOB%</div></div><div class="stat-box"><div class="stat-val">${stats.babip}</div><div class="stat-lbl">BABIP</div></div><div class="stat-box"><div class="stat-val">${stats.whiffPct}</div><div class="stat-lbl">Whiff%</div></div><div class="stat-box"><div class="stat-val">${stats.fpsPct}</div><div class="stat-lbl">FPS%</div></div></div></div>
+<div class="section"><div class="section-title">Base Running</div><div class="base-row"><div class="base-item"><div class="base-val">${sbA}</div><div class="base-lbl">SB Allowed</div></div><div class="base-item"><div class="base-val">${csO}</div><div class="base-lbl">CS</div></div><div class="base-item"><div class="base-val">${sbPct}</div><div class="base-lbl">SB%</div></div><div class="base-item"><div class="base-val">${poAt}</div><div class="base-lbl">PO Att</div></div><div class="base-item"><div class="base-val">${poOt}</div><div class="base-lbl">PO Out</div></div></div>${be.length>0?`<table style="margin-top:10px;max-width:420px"><thead><tr><th>Inn</th><th>Event</th><th>Base</th></tr></thead><tbody>${beRows}</tbody></table>`:''}</div>
+<div class="section"><div class="section-title">Pitch Arsenal</div><table><thead><tr><th>Pitch</th><th>#</th><th>Usage</th><th>Avg Velo</th><th>Whiff%</th><th>Ball%</th></tr></thead><tbody>${arsenalRows}</tbody></table></div>
+${splitSection}
+<div class="section"><div class="section-title">Pitch Log — ${outing.pitches.length} pitches</div><table><thead><tr><th>#</th><th>Inn</th><th>Count</th><th>Hand</th><th>Type</th><th>Velo</th><th>Zone</th><th>Result</th><th>Outcome</th></tr></thead><tbody>${pitchRows}</tbody></table></div>
+<div class="footer">PitchTrack Pro · Generated ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},400);}<\/script>
+</body></html>`;
+};
+
+function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={},baseEvts=[]){
   if(!pitches.length)return null;
   const tp=pitches.length,bf=abs.length;
   const outs=abs.reduce((sum,ab)=>sum+(ab.result==='DP'?2:['Out','K','KL','FC','SF'].includes(ab.result)?1:0),0);
@@ -71,10 +96,16 @@ function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={}){
   const lobPct=lobDen>0?Math.round(lobNum/lobDen*100)+'%':'—';
   const countPitchMix=Object.fromEntries(COUNTS.map(c=>{const[b,s2]=c.split('-').map(Number);const cps=pitches.filter(p=>p.cntBefore?.b===b&&p.cntBefore?.s===s2);const tot=cps.length;const byType=Object.fromEntries(PT.map(t=>{const n=cps.filter(p=>p.type===t).length;return[t,{n,pct:tot>0?Math.round(n/tot*100):0}]}));const nStrike=cps.filter(p=>['StrikeL','StrikeS','Foul'].includes(p.result)).length;const nBall=cps.filter(p=>p.result==='Ball').length;const nInPlay=cps.filter(p=>p.result==='InPlay').length;return[c,{total:tot,byType,strikePct:tot>0?Math.round(nStrike/tot*100):0,ballPct:tot>0?Math.round(nBall/tot*100):0,inPlayPct:tot>0?Math.round(nInPlay/tot*100):0,nStrike,nBall,nInPlay}];}));
   const seqPatterns=Object.fromEntries(PT.map(t=>{const nexts=[];pitches.forEach((p,i)=>{if(p.type===t&&i+1<pitches.length)nexts.push(pitches[i+1].type)});const tot=nexts.length;const byType=Object.fromEntries(PT.map(t2=>{const n=nexts.filter(x=>x===t2).length;return[t2,{n,pct:tot>0?Math.round(n/tot*100):0}]}).filter(([,v])=>v.n>0));return[t,{total:tot,byType}];}));
+  // Base running stats
+  const sbAllowed=baseEvts.filter(e=>e.type==='SB').length;
+  const csOut=baseEvts.filter(e=>e.type==='CS').length;
+  const poAtt=baseEvts.filter(e=>e.type==='PO_ATT').length;
+  const poOut=baseEvts.filter(e=>e.type==='PO_OUT').length;
+  const sbPct=(sbAllowed+csOut)>0?Math.round(sbAllowed/(sbAllowed+csOut)*100)+'%':'—';
   const mkSplit=(sAbs,sPs)=>{if(!sAbs.length)return null;const sHits=sAbs.filter(ab=>['1B','2B','3B','HR'].includes(ab.result));const sHrs=sAbs.filter(ab=>ab.result==='HR');const sKs=sAbs.filter(ab=>['K','KL'].includes(ab.result));const sBbs=sAbs.filter(ab=>ab.result==='BB');const sAbN=sAbs.filter(ab=>!['BB','HBP'].includes(ab.result)).length;const sBabipD=sAbN-sKs.length-sHrs.length;const sWhiffs=sPs.filter(p=>p.result==='StrikeS');const sFps=sAbs.filter(ab=>ab.fps);const sInPlay=sPs.filter(p=>p.result==='InPlay');const sGb=sInPlay.filter(p=>p.hitType==='GB');const sFbP=sInPlay.filter(p=>['FB','PU'].includes(p.hitType));const sVps=sPs.filter(p=>p.vel);const sPtBk=Object.fromEntries(PT.map(t=>{const ps=sPs.filter(p=>p.type===t);return[t,{n:ps.length,pct:sPs.length?Math.round(ps.length/sPs.length*100):0,whiff:ps.filter(p=>p.result==='StrikeS').length}]}));return{bf:sAbs.length,tp:sPs.length,ba:fmtAvg(sAbN>0?sHits.length/sAbN:0),babip:fmtAvg(sBabipD>0?(sHits.length-sHrs.length)/sBabipD:0),pbf:sAbs.length>0?(sPs.length/sAbs.length).toFixed(2):'—',kPct:sAbs.length>0?Math.round(sKs.length/sAbs.length*100)+'%':'—',bbPct:sAbs.length>0?Math.round(sBbs.length/sAbs.length*100)+'%':'—',whiffPct:sPs.length>0?Math.round(sWhiffs.length/sPs.length*100)+'%':'—',fpsPct:sAbs.length>0?Math.round(sFps.length/sAbs.length*100)+'%':'—',gbPct:sInPlay.length>0?Math.round(sGb.length/sInPlay.length*100)+'%':'—',fbPct:sInPlay.length>0?Math.round(sFbP.length/sInPlay.length*100)+'%':'—',avgVel:sVps.length?Math.round(sVps.reduce((s,p)=>s+p.vel,0)/sVps.length):null,ptBk:sPtBk};};
   const lSplit=mkSplit(abs.filter(ab=>ab.hand==='L'),pitches.filter(p=>p.hand==='L'));
   const rSplit=mkSplit(abs.filter(ab=>ab.hand==='R'),pitches.filter(p=>p.hand==='R'));
-  return{ip:`${Math.floor(ipD)}.${outs%3}`,bf,tp,pip:ipD>0?(tp/ipD).toFixed(1):'—',pbf:bf>0?(tp/bf).toFixed(2):'—',sub3pct:bf>0?Math.round(sub3.length/bf*100)+'%':'—',inn123,sub13,fpsPct:bf>0?Math.round(fps.length/bf*100)+'%':'—',fpsoPct:fps.length>0?Math.round(fpso.length/fps.length*100)+'%':'—',compPct:tp>0?Math.round(compP.length/tp*100)+'%':'—',bbInn:ipD>0?(bbs.length/ipD).toFixed(2):'—',zeroWalk,lobb,bbsS,lobbS,whiffPct:tp>0?Math.round(whiffs.length/tp*100)+'%':'—',weakPct:inPlay.length>0?Math.round(weakP.length/inPlay.length*100)+'%':'—',hhbPct:inPlay.length>0?Math.round(hhbP.length/inPlay.length*100)+'%':'—',fbPct:inPlay.length>0?Math.round(fbP.length/inPlay.length*100)+'%':'—',gbPct:inPlay.length>0?Math.round(gbP.length/inPlay.length*100)+'%':'—',babip:fmtAvg(babip),baRisp:fmtAvg(baRisp),ptBreak,countBk,countPitchMix,seqPatterns,walks:bbs.length,hits:hits.length,hrs:hrs.length,ks:ks.length,outs,dps,innCount:innNums.length,totalRuns,totalEarnedRuns,era,kbb,lobPct,lSplit,rSplit};
+  return{ip:`${Math.floor(ipD)}.${outs%3}`,bf,tp,pip:ipD>0?(tp/ipD).toFixed(1):'—',pbf:bf>0?(tp/bf).toFixed(2):'—',sub3pct:bf>0?Math.round(sub3.length/bf*100)+'%':'—',inn123,sub13,fpsPct:bf>0?Math.round(fps.length/bf*100)+'%':'—',fpsoPct:fps.length>0?Math.round(fpso.length/fps.length*100)+'%':'—',compPct:tp>0?Math.round(compP.length/tp*100)+'%':'—',bbInn:ipD>0?(bbs.length/ipD).toFixed(2):'—',zeroWalk,lobb,bbsS,lobbS,whiffPct:tp>0?Math.round(whiffs.length/tp*100)+'%':'—',weakPct:inPlay.length>0?Math.round(weakP.length/inPlay.length*100)+'%':'—',hhbPct:inPlay.length>0?Math.round(hhbP.length/inPlay.length*100)+'%':'—',fbPct:inPlay.length>0?Math.round(fbP.length/inPlay.length*100)+'%':'—',gbPct:inPlay.length>0?Math.round(gbP.length/inPlay.length*100)+'%':'—',babip:fmtAvg(babip),baRisp:fmtAvg(baRisp),ptBreak,countBk,countPitchMix,seqPatterns,walks:bbs.length,hits:hits.length,hrs:hrs.length,ks:ks.length,outs,dps,innCount:innNums.length,totalRuns,totalEarnedRuns,era,kbb,lobPct,lSplit,rSplit,sbAllowed,csOut,poAtt,poOut,sbPct};
 }
 
 function ZoneView({pitches=[],pending=null,onClickZone=null,filterType='all',hitsOnly=false}){
@@ -181,6 +212,7 @@ export default function App(){
   const [oid,setOid]=useState(null);
   const [pitches,setPitches]=useState([]);
   const [atBats,setAtBats]=useState([]);
+  const [baseEvents,setBaseEvents]=useState([]);
   const [inning,setInning]=useState(1);
   const [curAB,setCurAB]=useState(mkAB(1,true));
   const [pend,setPend]=useState({...INIT_P});
@@ -197,12 +229,7 @@ export default function App(){
   const [authDone,setAuthDone]=useState(false);
 
   useEffect(()=>{setCurAB(prev=>({...prev,risp:runners.second||runners.third}));},[runners.second,runners.third]);
-
-  // Persist pitcher order to localStorage
-  useEffect(()=>{
-    if(pitchers.length>0){try{localStorage.setItem('pt_pitcher_order',JSON.stringify(pitchers));}catch(e){}}
-  },[pitchers]);
-
+  useEffect(()=>{if(pitchers.length>0){try{localStorage.setItem('pt_pitcher_order',JSON.stringify(pitchers));}catch(e){}}},[pitchers]);
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session:s}})=>{setSession(s);setAuthLoading(false)});
     const{data:{subscription}}=supabase.auth.onAuthStateChange((_,s)=>setSession(s));
@@ -214,19 +241,10 @@ export default function App(){
 
   useEffect(()=>{
     if(!session)return;
-    supabase.from('pitchers').select('name').then(({data})=>{
-      if(data?.length){
-        const names=data.map(p=>p.name);
-        try{
-          const saved=JSON.parse(localStorage.getItem('pt_pitcher_order')||'[]');
-          const ordered=[...saved.filter(n=>names.includes(n)),...names.filter(n=>!saved.includes(n))];
-          setPitchers(ordered);
-        }catch(e){setPitchers(names.sort());}
-      }
-    });
-    supabase.from('outings').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setOutings(data.map(o=>({id:o.id,pitcher:o.pitcher,date:o.date,opponent:o.opponent||'',pitches:o.pitches||[],atBats:o.at_bats||[],inningRuns:o.inning_runs||{},earnedRunsByInning:o.earned_runs||{},inning:o.inning||1})))});
+    supabase.from('pitchers').select('name').then(({data})=>{if(data?.length){const names=data.map(p=>p.name);try{const saved=JSON.parse(localStorage.getItem('pt_pitcher_order')||'[]');const ordered=[...saved.filter(n=>names.includes(n)),...names.filter(n=>!saved.includes(n))];setPitchers(ordered);}catch(e){setPitchers(names.sort());}}});
+    supabase.from('outings').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setOutings(data.map(o=>({id:o.id,pitcher:o.pitcher,date:o.date,opponent:o.opponent||'',pitches:o.pitches||[],atBats:o.at_bats||[],baseEvents:o.base_events||[],inningRuns:o.inning_runs||{},earnedRunsByInning:o.earned_runs||{},inning:o.inning||1})))});
     const ch=supabase.channel('pitchtrack-live')
-      .on('postgres_changes',{event:'*',schema:'public',table:'outings'},payload=>{if(payload.eventType==='DELETE')return;const o=payload.new;setOutings(prev=>[...prev.filter(x=>x.id!==o.id),{id:o.id,pitcher:o.pitcher,date:o.date,opponent:o.opponent||'',pitches:o.pitches||[],atBats:o.at_bats||[],inningRuns:o.inning_runs||{},earnedRunsByInning:o.earned_runs||{},inning:o.inning||1}]);})
+      .on('postgres_changes',{event:'*',schema:'public',table:'outings'},payload=>{if(payload.eventType==='DELETE')return;const o=payload.new;setOutings(prev=>[...prev.filter(x=>x.id!==o.id),{id:o.id,pitcher:o.pitcher,date:o.date,opponent:o.opponent||'',pitches:o.pitches||[],atBats:o.at_bats||[],baseEvents:o.base_events||[],inningRuns:o.inning_runs||{},earnedRunsByInning:o.earned_runs||{},inning:o.inning||1}]);})
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'pitchers'},payload=>{setPitchers(prev=>prev.includes(payload.new.name)?prev:[...prev,payload.new.name])})
       .subscribe();
     return()=>supabase.removeChannel(ch);
@@ -234,11 +252,11 @@ export default function App(){
 
   useEffect(()=>{
     if(!active||!oid||!session)return;
-    const t=setTimeout(()=>{supabase.from('outings').upsert({id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',inning,pitches,at_bats:atBats,inning_runs:inningRuns,earned_runs:earnedRunsByInning,completed:false,updated_at:new Date().toISOString()}).then(()=>{});},400);
+    const t=setTimeout(()=>{supabase.from('outings').upsert({id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',inning,pitches,at_bats:atBats,base_events:baseEvents,inning_runs:inningRuns,earned_runs:earnedRunsByInning,completed:false,updated_at:new Date().toISOString()}).then(()=>{});},400);
     return()=>clearTimeout(t);
-  },[pitches,atBats,inningRuns,earnedRunsByInning,inning,active,oid,session]);
+  },[pitches,atBats,baseEvents,inningRuns,earnedRunsByInning,inning,active,oid,session]);
 
-  const startOuting=()=>{if(!info.pitcher)return;const id=uid();setOid(id);setActive(true);setPitches([]);setAtBats([]);setInning(1);setInningRuns({});setEarnedRunsByInning({});setRunners({...INIT_RUNNERS});setCurAB(mkAB(1,true));setPend({...INIT_P})};
+  const startOuting=()=>{if(!info.pitcher)return;const id=uid();setOid(id);setActive(true);setPitches([]);setAtBats([]);setBaseEvents([]);setInning(1);setInningRuns({});setEarnedRunsByInning({});setRunners({...INIT_RUNNERS});setCurAB(mkAB(1,true));setPend({...INIT_P})};
 
   const handleLogPitch=useCallback(()=>{
     if(!pend.fx||!pend.result)return;
@@ -256,55 +274,68 @@ export default function App(){
     setPend({...INIT_P});
   },[pend,pitches,atBats,curAB,inning]);
 
+  // ── BASE EVENTS ──
+  const logBaseEvent=useCallback((type,base)=>{
+    setBaseEvents(prev=>[...prev,{id:uid(),type,base,inning}]);
+    if(type==='SB'){
+      if(base==='2B')setRunners(prev=>({...prev,first:false,second:true}));
+      if(base==='3B')setRunners(prev=>({...prev,second:false,third:true}));
+      if(base==='H')setRunners(prev=>({...prev,third:false}));
+    }
+    if(type==='CS'){
+      if(base==='2B')setRunners(prev=>({...prev,first:false}));
+      if(base==='3B')setRunners(prev=>({...prev,second:false}));
+      if(base==='H')setRunners(prev=>({...prev,third:false}));
+    }
+    if(type==='PO_OUT'){
+      if(base==='1B')setRunners(prev=>({...prev,first:false}));
+      if(base==='2B')setRunners(prev=>({...prev,second:false}));
+      if(base==='3B')setRunners(prev=>({...prev,third:false}));
+    }
+  },[inning]);
+
   const handleUndo=()=>{
     if(curAB.pitches.length>0){const np=curAB.pitches.slice(0,-1);const nc=np.reduce((c,p)=>advCnt(c,p.result),{b:0,s:0});setCurAB(prev=>({...prev,pitches:np,cnt:nc}));setPitches(prev=>prev.slice(0,-1));}
     else if(atBats.length>0){const lastAB=atBats[atBats.length-1];const rp=lastAB.pitches.slice(0,-1);const rc=rp.reduce((c,p)=>advCnt(c,p.result),{b:0,s:0});setAtBats(prev=>prev.slice(0,-1));setCurAB({...lastAB,pitches:rp,cnt:rc,result:null});setPitches(prev=>prev.slice(0,-1));}
   };
-
   const handleNewInning=()=>{const n=inning+1;setInning(n);setRunners({...INIT_RUNNERS});setCurAB(mkAB(n,true))};
   const handleEndOuting=()=>{
-    const saved={id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',pitches,atBats,inning,inningRuns,earnedRunsByInning};
+    const saved={id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',pitches,atBats,baseEvents,inning,inningRuns,earnedRunsByInning};
     setOutings(prev=>[...prev.filter(o=>o.id!==oid),saved]);
-    if(session)supabase.from('outings').upsert({id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',inning,pitches,at_bats:atBats,inning_runs:inningRuns,earned_runs:earnedRunsByInning,completed:true,updated_at:new Date().toISOString()}).then(()=>{});
-    setActive(false);setOid(null);setPitches([]);setAtBats([]);setInning(1);setInningRuns({});setEarnedRunsByInning({});setRunners({...INIT_RUNNERS});setCurAB(mkAB(1,true));setPend({...INIT_P});
+    if(session)supabase.from('outings').upsert({id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',inning,pitches,at_bats:atBats,base_events:baseEvents,inning_runs:inningRuns,earned_runs:earnedRunsByInning,completed:true,updated_at:new Date().toISOString()}).then(()=>{});
+    setActive(false);setOid(null);setPitches([]);setAtBats([]);setBaseEvents([]);setInning(1);setInningRuns({});setEarnedRunsByInning({});setRunners({...INIT_RUNNERS});setCurAB(mkAB(1,true));setPend({...INIT_P});
+  };
+  const addPitcher=()=>{if(!newPName.trim())return;const name=newPName.trim();if(pitchers.includes(name)){setNewPName('');return;}setPitchers(prev=>[...prev,name]);setNewPName('');if(session)supabase.from('pitchers').upsert({name}).then(()=>{})};
+  const deletePitcher=(name)=>{if(!window.confirm(`Delete "${name}"? Their outings remain in Analytics.`))return;setPitchers(prev=>prev.filter(p=>p!==name));if(info.pitcher===name)setInfo(p=>({...p,pitcher:''}));if(session)supabase.from('pitchers').delete().eq('name',name).then(()=>{})};
+  const movePitcher=(idx,dir)=>{setPitchers(prev=>{const arr=[...prev];const ni=idx+dir;if(ni<0||ni>=arr.length)return arr;[arr[idx],arr[ni]]=[arr[ni],arr[idx]];return arr;})};
+  const deleteOuting=(id)=>{if(!window.confirm('Delete this outing? Cannot be undone.'))return;setOutings(prev=>prev.filter(o=>o.id!==id));if(ana.outingId===id)setAna(prev=>({...prev,outingId:'all'}));if(session)supabase.from('outings').delete().eq('id',id).then(()=>{})};
+
+  // ── PDF REPORT ──
+  const generatePDFReport=()=>{
+    const outing=outings.find(o=>o.id===ana.outingId);
+    if(!outing)return;
+    const stats=computeStats(outing.pitches,outing.atBats,outing.inningRuns||{},outing.earnedRunsByInning||{},outing.baseEvents||[]);
+    if(!stats)return;
+    const html=generateReportHTML(outing,stats);
+    const win=window.open('','_blank');
+    if(!win)return;
+    win.document.write(html);
+    win.document.close();
   };
 
-  const addPitcher=()=>{
-    if(!newPName.trim())return;
-    const name=newPName.trim();
-    if(pitchers.includes(name)){setNewPName('');return;}
-    setPitchers(prev=>[...prev,name]);
-    setNewPName('');
-    if(session)supabase.from('pitchers').upsert({name}).then(()=>{});
-  };
-
-  // ── MANAGE PITCHERS ──
-  const deletePitcher=(name)=>{
-    if(!window.confirm(`Delete "${name}"? Their outings will remain in Analytics.`))return;
-    setPitchers(prev=>prev.filter(p=>p!==name));
-    if(info.pitcher===name)setInfo(p=>({...p,pitcher:''}));
-    if(session)supabase.from('pitchers').delete().eq('name',name).then(()=>{});
-  };
-  const movePitcher=(idx,dir)=>{
-    setPitchers(prev=>{
-      const arr=[...prev];
-      const ni=idx+dir;
-      if(ni<0||ni>=arr.length)return arr;
-      [arr[idx],arr[ni]]=[arr[ni],arr[idx]];
-      return arr;
-    });
-  };
-
-  // ── DELETE OUTING ──
-  const deleteOuting=(id)=>{
-    if(!window.confirm('Delete this outing? This cannot be undone.'))return;
-    setOutings(prev=>prev.filter(o=>o.id!==id));
-    if(ana.outingId===id)setAna(prev=>({...prev,outingId:'all'}));
-    if(session)supabase.from('outings').delete().eq('id',id).then(()=>{});
-  };
-
-  const curStats=useMemo(()=>computeStats(pitches,atBats,inningRuns,earnedRunsByInning),[pitches,atBats,inningRuns,earnedRunsByInning]);
-  const anaData=useMemo(()=>{if(!ana.pitcher)return{pitches:[],atBats:[],stats:null,outings:[]};const fo=outings.filter(o=>o.pitcher===ana.pitcher&&(ana.outingId==='all'||o.id===ana.outingId));let ps=fo.flatMap(o=>o.pitches);let as=fo.flatMap(o=>o.atBats);const aggRuns=fo.reduce((acc,o)=>{Object.entries(o.inningRuns||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});const aggER=fo.reduce((acc,o)=>{Object.entries(o.earnedRunsByInning||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});const filtPs=ana.handFilter==='all'?ps:ps.filter(p=>p.hand===ana.handFilter);const filtAs=ana.handFilter==='all'?as:as.filter(ab=>ab.hand===ana.handFilter);return{pitches:ps,atBats:as,filtPitches:filtPs,filtAtBats:filtAs,stats:computeStats(ps,as,aggRuns,aggER),filtStats:computeStats(filtPs,filtAs),outings:fo};},[outings,ana]);
+  const curStats=useMemo(()=>computeStats(pitches,atBats,inningRuns,earnedRunsByInning,baseEvents),[pitches,atBats,inningRuns,earnedRunsByInning,baseEvents]);
+  const anaData=useMemo(()=>{
+    if(!ana.pitcher)return{pitches:[],atBats:[],stats:null,outings:[]};
+    const fo=outings.filter(o=>o.pitcher===ana.pitcher&&(ana.outingId==='all'||o.id===ana.outingId));
+    const ps=fo.flatMap(o=>o.pitches);
+    const as=fo.flatMap(o=>o.atBats);
+    const be=fo.flatMap(o=>o.baseEvents||[]);
+    const aggRuns=fo.reduce((acc,o)=>{Object.entries(o.inningRuns||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});
+    const aggER=fo.reduce((acc,o)=>{Object.entries(o.earnedRunsByInning||{}).forEach(([inn,r])=>{acc[inn]=(acc[inn]||0)+r});return acc},{});
+    const filtPs=ana.handFilter==='all'?ps:ps.filter(p=>p.hand===ana.handFilter);
+    const filtAs=ana.handFilter==='all'?as:as.filter(ab=>ab.hand===ana.handFilter);
+    return{pitches:ps,atBats:as,baseEvents:be,filtPitches:filtPs,filtAtBats:filtAs,stats:computeStats(ps,as,aggRuns,aggER,be),filtStats:computeStats(filtPs,filtAs),outings:fo};
+  },[outings,ana]);
 
   const card=(x={})=>({background:'linear-gradient(135deg,#111827 0%,#0f172a 100%)',borderRadius:'10px',border:'1px solid #1e3a5f',padding:'14px',...x});
   const inp={background:'#060d1a',border:'1px solid #1e3a5f',borderRadius:'6px',padding:'7px 10px',color:'#e2e8f0',fontSize:'13px',outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
@@ -314,8 +345,10 @@ export default function App(){
   const resultColor=(r)=>{if(!r)return'#475569';if(['1B','2B','3B','HR'].includes(r))return'#22c55e';if(r==='BB')return'#f59e0b';if(['K','KL'].includes(r))return'#ef4444';if(r==='HBP')return'#a78bfa';if(r==='DP')return'#f97316';return'#64748b'};
   const canUndo=curAB.pitches.length>0||atBats.length>0;
   const s=anaData.filtStats||anaData.stats;
-  const v=ana.view;
-  const show=(key)=>v==='all'||v===key;
+  const vw=ana.view;
+  const show=(key)=>vw==='all'||vw===key;
+  // Base event button style helpers
+  const beBtn=(color,bg)=>({padding:'3px 7px',borderRadius:'4px',border:`1px solid ${color}`,background:bg||'transparent',color,cursor:'pointer',fontSize:'9px',fontWeight:'800',fontFamily:'inherit',transition:'all 0.12s'});
 
   if(authLoading)return(<div style={{background:'#030712',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#475569',fontSize:'14px',fontFamily:'monospace'}}>Loading...</div></div>);
 
@@ -347,11 +380,11 @@ export default function App(){
         .log-btn:hover:not(:disabled){background:#2563eb!important;transform:translateY(-1px);box-shadow:0 4px 20px rgba(59,130,246,0.4);}.log-btn:disabled{cursor:not-allowed;}
         .tab-btn:hover{color:#94a3b8!important;}.ana-view-btn:hover{background:#1e3a5f!important;}
         input:focus,select:focus{border-color:#2d6a9f!important;box-shadow:0 0 0 2px rgba(45,106,159,0.2);}
-        .mgmt-row:hover{background:#0a1929!important;}
-        .del-btn:hover{background:rgba(239,68,68,0.15)!important;color:#f87171!important;}
+        .mgmt-row:hover{background:#0a1929!important;}.del-btn:hover{background:rgba(239,68,68,0.15)!important;color:#f87171!important;}
+        .be-btn:hover{opacity:0.8;}
       `}</style>
 
-      {/* ── MANAGE PITCHERS MODAL ── */}
+      {/* MANAGE PITCHERS MODAL */}
       {showManage&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}} onClick={e=>{if(e.target===e.currentTarget)setShowManage(false)}}>
           <div style={{background:'#0f172a',border:'1px solid #1e3a5f',borderRadius:'14px',padding:'24px',width:'100%',maxWidth:'400px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 30px 80px rgba(0,0,0,0.7)'}}>
@@ -359,7 +392,7 @@ export default function App(){
               <span style={{fontWeight:'800',fontSize:'15px',color:'#e2e8f0',fontFamily:'"Space Grotesk",sans-serif'}}>Manage Pitchers</span>
               <button onClick={()=>setShowManage(false)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#475569',fontSize:'20px',lineHeight:1,fontFamily:'inherit'}}>×</button>
             </div>
-            <div style={{fontSize:'9px',color:'#334155',marginBottom:'12px',fontWeight:'600'}}>Use arrows to reorder · Order is saved to this device</div>
+            <div style={{fontSize:'9px',color:'#334155',marginBottom:'12px',fontWeight:'600'}}>Use arrows to reorder · Order saves to this device</div>
             <div style={{overflowY:'auto',flex:1}}>
               {pitchers.length===0&&<div style={{color:'#334155',fontSize:'12px',textAlign:'center',padding:'20px'}}>No pitchers added yet</div>}
               {pitchers.map((name,i)=>(
@@ -429,7 +462,43 @@ export default function App(){
                   <div>AB-P <span style={{color:'#e2e8f0',fontWeight:'700'}}>{curAB.pitches.length+1}</span></div>
                 </div>
                 <div style={{borderTop:'1px solid #1e3a5f',marginTop:'10px',paddingTop:'8px'}}><BaseRunnerDiamond runners={runners} onChange={setRunners} disabled={!active}/></div>
+
+                {/* ── BASE EVENTS ── */}
+                {active&&(runners.first||runners.second||runners.third)&&(
+                  <div style={{borderTop:'1px solid #1e3a5f',marginTop:'8px',paddingTop:'8px'}}>
+                    <div style={{fontSize:'9px',fontWeight:'800',color:'#f59e0b',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px',textAlign:'center'}}>Base Events</div>
+                    {[
+                      {key:'first',pos:'1B',sb:'2B',cs:'2B'},
+                      {key:'second',pos:'2B',sb:'3B',cs:'3B'},
+                      {key:'third',pos:'3B',sb:'H',cs:'H'},
+                    ].filter(({key})=>runners[key]).map(({key,pos,sb,cs})=>(
+                      <div key={key} style={{display:'flex',alignItems:'center',gap:'4px',marginBottom:'5px',flexWrap:'wrap'}}>
+                        <span style={{fontSize:'9px',fontWeight:'900',color:'#f59e0b',minWidth:'18px',fontFamily:'monospace'}}>{pos}</span>
+                        <button className="be-btn" onClick={()=>logBaseEvent('SB',sb)} style={{...beBtn('#f59e0b','rgba(245,158,11,0.1)'),padding:'3px 8px'}}>SB→{sb}</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('CS',cs)} style={{...beBtn('#22c55e','rgba(34,197,94,0.1)'),padding:'3px 8px'}}>CS</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('PO_ATT',pos)} style={{...beBtn('#475569'),padding:'3px 6px'}}>PO</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('PO_OUT',pos)} style={{...beBtn('#22c55e','rgba(34,197,94,0.1)'),padding:'3px 6px'}}>PO OUT</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Base events log */}
+                {baseEvents.length>0&&(
+                  <div style={{borderTop:'1px solid #1e3a5f',marginTop:'8px',paddingTop:'8px'}}>
+                    <div style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'5px'}}>Base Events Log</div>
+                    {[...baseEvents].reverse().slice(0,6).map((e,i)=>(
+                      <div key={i} style={{display:'flex',gap:'6px',fontSize:'9px',padding:'2px 0',borderBottom:'1px solid #0a1929',alignItems:'center'}}>
+                        <span style={{color:'#334155'}}>I{e.inning}</span>
+                        <span style={{fontWeight:'800',color:e.type==='SB'?'#f59e0b':e.type==='CS'||e.type==='PO_OUT'?'#22c55e':'#475569'}}>
+                          {e.type==='SB'?`SB → ${e.base}`:e.type==='CS'?`CS @ ${e.base}`:e.type==='PO_ATT'?`PO (safe) ${e.base}`:`PO OUT ${e.base}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
               {curStats&&(
                 <div style={{...card({padding:'10px',marginTop:'10px'})}}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px'}}>Live Stats</div>
@@ -437,6 +506,14 @@ export default function App(){
                     <StatBox v={curStats.tp} l="Pitches"/><StatBox v={curStats.ip} l="IP"/><StatBox v={curStats.era} l="ERA" accent="#f43f5e"/>
                     <StatBox v={curStats.kbb} l="K/BB"/><StatBox v={curStats.ks} l="K's" accent="#ef4444"/><StatBox v={curStats.walks} l="BB" accent="#f59e0b"/>
                   </div>
+                  {(curStats.sbAllowed>0||curStats.csOut>0||curStats.poOut>0)&&(
+                    <div style={{display:'flex',gap:'10px',marginBottom:'8px',padding:'6px 8px',background:'#060d1a',borderRadius:'6px',border:'1px solid #1e3a5f',fontSize:'10px',flexWrap:'wrap'}}>
+                      <span style={{color:'#475569'}}>SB: <span style={{color:'#f59e0b',fontWeight:'800'}}>{curStats.sbAllowed}</span></span>
+                      <span style={{color:'#475569'}}>CS: <span style={{color:'#22c55e',fontWeight:'800'}}>{curStats.csOut}</span></span>
+                      <span style={{color:'#475569'}}>SB%: <span style={{color:'#e2e8f0',fontWeight:'800'}}>{curStats.sbPct}</span></span>
+                      <span style={{color:'#475569'}}>PO: <span style={{color:'#22c55e',fontWeight:'800'}}>{curStats.poOut}</span></span>
+                    </div>
+                  )}
                   <div style={{borderTop:'1px solid #1e3a5f',paddingTop:'8px'}}>
                     <div style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px'}}>Runs — Inn {inning}</div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
@@ -457,6 +534,7 @@ export default function App(){
                   </div>
                 </div>
               )}
+
               {atBats.filter(ab=>ab.result==='BB').length>0&&(
                 <div style={{...card({padding:'10px',marginTop:'10px'})}}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px'}}>Walk Tracker</div>
@@ -568,16 +646,16 @@ export default function App(){
             {ana.pitcher&&(
               <div style={{display:'flex',gap:'6px',alignItems:'flex-end'}}>
                 <div><span style={lbl}>Outing</span><select value={ana.outingId} onChange={e=>setAna(p=>({...p,outingId:e.target.value}))} style={{...inp,minWidth:'180px'}}><option value="all">All Outings ({outings.filter(o=>o.pitcher===ana.pitcher).length})</option>{outings.filter(o=>o.pitcher===ana.pitcher).map(o=><option key={o.id} value={o.id}>{o.date} vs {o.opponent||'Opp'} ({o.pitches.length}p)</option>)}</select></div>
-                {ana.outingId!=='all'&&(
-                  <button className="del-btn" onClick={()=>deleteOuting(ana.outingId)} style={{padding:'7px 12px',borderRadius:'6px',border:'1px solid rgba(239,68,68,0.3)',background:'transparent',color:'#ef4444',cursor:'pointer',fontSize:'11px',fontWeight:'700',transition:'all 0.15s',fontFamily:'inherit',whiteSpace:'nowrap',marginBottom:'1px'}}>🗑 Delete Outing</button>
-                )}
+                {ana.outingId!=='all'&&(<>
+                  <button onClick={generatePDFReport} style={{padding:'7px 12px',borderRadius:'6px',border:'1px solid #2d6a9f',background:'rgba(45,106,159,0.1)',color:'#60a5fa',cursor:'pointer',fontSize:'11px',fontWeight:'700',transition:'all 0.15s',fontFamily:'inherit',whiteSpace:'nowrap',marginBottom:'1px'}}>📄 PDF Report</button>
+                  <button className="del-btn" onClick={()=>deleteOuting(ana.outingId)} style={{padding:'7px 12px',borderRadius:'6px',border:'1px solid rgba(239,68,68,0.3)',background:'transparent',color:'#ef4444',cursor:'pointer',fontSize:'11px',fontWeight:'700',transition:'all 0.15s',fontFamily:'inherit',whiteSpace:'nowrap',marginBottom:'1px'}}>🗑 Delete</button>
+                </>)}
               </div>
             )}
             {anaData.pitches.length>0&&(<div style={{display:'flex',alignItems:'center',gap:'6px',flex:'0 0 auto'}}><span style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px'}}>View vs</span>{[{k:'all',l:'All',c:'#475569'},{k:'L',l:'⬡ LHH',c:'#3b82f6'},{k:'R',l:'⬡ RHH',c:'#fbbf24'}].map(({k,l,c})=>(<button key={k} onClick={()=>setAna(p=>({...p,handFilter:k}))} style={{...tog(k,ana.handFilter,c),padding:'5px 12px',fontSize:'11px'}}>{l}</button>))}</div>)}
             {anaData.pitches.length>0&&<div style={{marginLeft:'auto',fontSize:'11px',color:'#334155',fontWeight:'700'}}>{(anaData.filtPitches||anaData.pitches).length} pitches · {(anaData.filtAtBats||anaData.atBats).length} AB</div>}
           </div>
 
-          {/* View switcher */}
           <div style={{display:'flex',gap:'4px',flexWrap:'wrap',marginBottom:'14px',padding:'6px',background:'#060d1a',borderRadius:'10px',border:'1px solid #1e3a5f'}}>
             {ANA_VIEWS.map(({k,l})=>(<button key={k} className="ana-view-btn" onClick={()=>setAna(p=>({...p,view:k}))} style={{padding:'7px 14px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'11px',background:ana.view===k?'#1d4ed8':'transparent',color:ana.view===k?'#fff':'#475569',transition:'all 0.15s',fontFamily:'inherit',letterSpacing:'0.3px',whiteSpace:'nowrap'}}>{l}</button>))}
           </div>
@@ -594,7 +672,16 @@ export default function App(){
                 <div style={{...card({marginBottom:'14px'})}}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'14px',fontFamily:'"Space Grotesk",sans-serif',display:'flex',alignItems:'center',gap:'8px'}}>Season Stats{ana.handFilter!=='all'&&<span style={{padding:'2px 7px',borderRadius:'4px',fontSize:'10px',fontWeight:'900',background:ana.handFilter==='L'?'rgba(59,130,246,0.15)':'rgba(251,191,36,0.15)',color:ana.handFilter==='L'?'#3b82f6':'#fbbf24',border:`1px solid ${ana.handFilter==='L'?'rgba(59,130,246,0.3)':'rgba(251,191,36,0.3)'}`}}>vs {ana.handFilter}HH</span>}</div>
                   <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-                    {[[{v:s.ip,l:'IP'},{v:s.bf,l:'BF'},{v:s.tp,l:'Pitches'},{v:s.pip,l:'P/IP'},{v:s.pbf,l:'P/BF'},{v:s.sub3pct,l:'<3%'}],[{v:s.era,l:'ERA',ac:'#f43f5e'},{v:s.kbb,l:'K/BB'},{v:s.lobPct,l:'LOB%'},{v:s.totalRuns,l:'Runs',ac:'#f43f5e'},{v:s.hits,l:'Hits'},{v:s.walks,l:'BB'}],[{v:s.inn123,l:'123INN'},{v:s.sub13,l:'<13 INN'},{v:s.fpsPct,l:'FPS%'},{v:s.fpsoPct,l:'FPSO%'},{v:s.compPct,l:'COMP%'},{v:s.zeroWalk,l:'0BBINN'}],[{v:s.bbInn,l:'BB/INN'},{v:s.lobb,l:'LOBB'},{v:s.lobbS,l:'LOBBS'},{v:s.bbsS,l:'BBS'},{v:s.dps,l:'DP'},{v:s.hrs,l:'HR'}],[{v:s.whiffPct,l:'WHIFF%'},{v:s.weakPct,l:'WEAK%'},{v:s.hhbPct,l:'HHB%'},{v:s.fbPct,l:'FB%'},{v:s.gbPct,l:'GB%'},{v:s.ks,l:"K's"}],[{v:s.babip,l:'BABIP'},{v:s.baRisp,l:'BA/RISP'},{v:s.outs,l:'Outs'},{v:null,l:''},{v:null,l:''},{v:null,l:''}]].map((row,ri)=>(<div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'8px'}}>{row.map(({v,l,ac},ci)=>v!==null?<StatBox key={ci} v={v} l={l} accent={ac||(l.includes('BB')||l==='LOBBS'||l==='LOBB'?'#f59e0b':l==="K's"||l==='BABIP'||l==='BA/RISP'?'#f43f5e':undefined)}/>:<div key={ci}/>)}</div>))}
+                    {[
+                      [{v:s.ip,l:'IP'},{v:s.bf,l:'BF'},{v:s.tp,l:'Pitches'},{v:s.pip,l:'P/IP'},{v:s.pbf,l:'P/BF'},{v:s.sub3pct,l:'<3%'}],
+                      [{v:s.era,l:'ERA',ac:'#f43f5e'},{v:s.kbb,l:'K/BB'},{v:s.lobPct,l:'LOB%'},{v:s.totalRuns,l:'Runs',ac:'#f43f5e'},{v:s.hits,l:'Hits'},{v:s.walks,l:'BB'}],
+                      [{v:s.inn123,l:'123INN'},{v:s.sub13,l:'<13 INN'},{v:s.fpsPct,l:'FPS%'},{v:s.fpsoPct,l:'FPSO%'},{v:s.compPct,l:'COMP%'},{v:s.zeroWalk,l:'0BBINN'}],
+                      [{v:s.bbInn,l:'BB/INN'},{v:s.lobb,l:'LOBB'},{v:s.lobbS,l:'LOBBS'},{v:s.bbsS,l:'BBS'},{v:s.dps,l:'DP'},{v:s.hrs,l:'HR'}],
+                      [{v:s.whiffPct,l:'WHIFF%'},{v:s.weakPct,l:'WEAK%'},{v:s.hhbPct,l:'HHB%'},{v:s.fbPct,l:'FB%'},{v:s.gbPct,l:'GB%'},{v:s.ks,l:"K's"}],
+                      [{v:s.babip,l:'BABIP'},{v:s.baRisp,l:'BA/RISP'},{v:s.outs,l:'Outs'},{v:null,l:''},{v:null,l:''},{v:null,l:''}],
+                      // Base running row
+                      [{v:s.sbAllowed,l:'SB Allow',ac:'#f59e0b'},{v:s.csOut,l:'CS',ac:'#22c55e'},{v:s.sbPct,l:'SB%'},{v:s.poAtt,l:'PO Att'},{v:s.poOut,l:'PO Out',ac:'#22c55e'},{v:null,l:''}],
+                    ].map((row,ri)=>(<div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'8px'}}>{row.map(({v,l,ac},ci)=>v!==null?<StatBox key={ci} v={v} l={l} accent={ac||(l.includes('BB')||l==='LOBBS'||l==='LOBB'?'#f59e0b':l==="K's"||l==='BABIP'||l==='BA/RISP'?'#f43f5e':undefined)}/>:<div key={ci}/>)}</div>))}
                   </div>
                 </div>
               )}
@@ -605,15 +692,15 @@ export default function App(){
                     <span>Heat Map</span>
                     <div style={{display:'flex',gap:'3px'}}>{[{k:'dots',l:'Dots'},{k:'density',l:'Density'}].map(({k,l})=>(<button key={k} onClick={()=>setAna(p=>({...p,heatMode:k}))} style={{...tog(k,ana.heatMode,'#2d6a9f'),padding:'2px 8px',fontSize:'9px'}}>{l}</button>))}</div>
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:v==='heatmap'?'auto 1fr':'260px 1fr',gap:'20px',alignItems:'start'}}>
-                    <div style={{width:v==='heatmap'?'320px':'100%',maxWidth:'320px'}}>
+                  <div style={{display:'grid',gridTemplateColumns:vw==='heatmap'?'auto 1fr':'260px 1fr',gap:'20px',alignItems:'start'}}>
+                    <div style={{width:vw==='heatmap'?'320px':'100%',maxWidth:'320px'}}>
                       <div style={{display:'flex',gap:'4px',marginBottom:'8px'}}>{[{k:'all',l:'All',c:'#475569'},{k:'L',l:'LHH',c:'#3b82f6'},{k:'R',l:'RHH',c:'#fbbf24'}].map(({k,l,c})=>(<button key={k} onClick={()=>setAna(p=>({...p,handFilter:k}))} style={{...tog(k,ana.handFilter,c),fontSize:'10px',padding:'3px 9px',flex:1}}>{l}</button>))}</div>
                       <div style={{display:'flex',flexWrap:'wrap',gap:'4px',marginBottom:'8px'}}><button onClick={()=>setAna(p=>({...p,filterType:'all'}))} style={{...tog('all',ana.filterType,'#475569'),fontSize:'10px',padding:'3px 8px'}}>All</button>{PT.filter(t=>(anaData.filtPitches||anaData.pitches).some(p=>p.type===t)).map(t=>(<button key={t} onClick={()=>setAna(p=>({...p,filterType:t}))} style={{...tog(t,ana.filterType,PC[t]),fontSize:'10px',padding:'3px 7px'}}>{t}</button>))}</div>
                       <label style={{display:'flex',alignItems:'center',gap:'5px',cursor:'pointer',fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700'}}><input type="checkbox" checked={ana.hitsOnly} onChange={e=>setAna(p=>({...p,hitsOnly:e.target.checked}))} style={{accentColor:'#f43f5e',width:'12px',height:'12px'}}/>Hits Only</label>
                       {ana.heatMode==='density'?<DensityZone pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>:<ZoneView pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>}
                       <div style={{display:'flex',flexWrap:'wrap',gap:'5px',marginTop:'8px'}}>{PT.filter(t=>(anaData.filtPitches||anaData.pitches).some(p=>p.type===t)).map(t=>(<div key={t} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px',color:'#475569'}}><div style={{width:'7px',height:'7px',borderRadius:'50%',background:PC[t]}}/>{PL[t]}</div>))}</div>
                     </div>
-                    {v==='heatmap'&&(
+                    {vw==='heatmap'&&(
                       <div>
                         <div style={{fontSize:'11px',fontWeight:'700',color:'#475569',marginBottom:'12px'}}>Zone breakdown</div>
                         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',maxWidth:'400px'}}>
@@ -631,7 +718,7 @@ export default function App(){
                     Spray Chart
                     <div style={{display:'flex',gap:'4px',marginLeft:'auto'}}><button onClick={()=>setAna(p=>({...p,sprayFilter:'all'}))} style={{...tog('all',ana.sprayFilter,'#475569'),fontSize:'9px',padding:'2px 8px'}}>All</button>{PT.filter(t=>anaData.pitches.some(p=>p.type===t&&p.result==='InPlay'&&p.sprayX!=null)).map(t=>(<button key={t} onClick={()=>setAna(p=>({...p,sprayFilter:t}))} style={{...tog(t,ana.sprayFilter,PC[t]),fontSize:'9px',padding:'2px 6px'}}>{t}</button>))}</div>
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:v==='spray'?'280px 1fr':'220px 1fr',gap:'16px',alignItems:'start'}}>
+                  <div style={{display:'grid',gridTemplateColumns:vw==='spray'?'280px 1fr':'220px 1fr',gap:'16px',alignItems:'start'}}>
                     <SprayChart pitches={anaData.pitches} filterType={ana.sprayFilter}/>
                     <div>
                       <div style={{fontSize:'9px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'8px'}}>In-Play Results by Pitch</div>
@@ -662,7 +749,7 @@ export default function App(){
                 <div style={{...card({marginBottom:'14px'})}}>
                   <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'2px',marginBottom:'4px',fontFamily:'"Space Grotesk",sans-serif'}}>Count Breakdown + Pitch Mix</div>
                   <div style={{fontSize:'9px',color:'#334155',marginBottom:'14px'}}>At-bat results & pitch selection at each count</div>
-                  <div style={{display:'grid',gridTemplateColumns:v==='counts'?'repeat(3,1fr)':'1fr',gap:'10px'}}>
+                  <div style={{display:'grid',gridTemplateColumns:vw==='counts'?'repeat(3,1fr)':'1fr',gap:'10px'}}>
                     {anaData.stats&&COUNTS.map(c=>{
                       const d=anaData.stats.countBk[c]||{n:0,outs:0,hits:0};
                       const mix=anaData.stats.countPitchMix?.[c]||{total:0,byType:{}};
