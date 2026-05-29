@@ -25,6 +25,20 @@ const HR_=[{k:'Out',l:'Out',c:'#64748b'},{k:'DP',l:'Dbl Play',c:'#f97316'},{k:'1
 const COUNTS=['0-0','0-1','0-2','1-0','1-1','1-2','2-0','2-1','2-2','3-0','3-1','3-2'];
 const ANA_VIEWS=[{k:'all',l:'All'},{k:'stats',l:'Season Stats'},{k:'heatmap',l:'Heat Map'},{k:'splits',l:'L/R Splits'},{k:'counts',l:'Count Breakdown'},{k:'sequences',l:'Pitch Sequences'},{k:'spray',l:'Spray Chart'},{k:'arsenal',l:'Arsenal'}];
 
+// ── AUTO-UPDATE RUNNERS after an at-bat ──
+const autoUpdateRunners=(abRes,r)=>{
+  if(abRes==='HR') return{first:false,second:false,third:false};
+  if(abRes==='3B') return{first:false,second:false,third:true};
+  if(abRes==='2B') return{first:false,second:true,third:r.first};           // 1B runner → 3B; 2B/3B runners score
+  if(abRes==='1B'||abRes==='E') return{first:true,second:r.first?true:r.second,third:r.third}; // 1B runner pushed to 2B
+  if(abRes==='BB'||abRes==='HBP'){                                          // force advancement only
+    let sec=r.second,thr=r.third;
+    if(r.first){sec=true;if(r.second)thr=true;}
+    return{first:true,second:sec,third:thr};
+  }
+  return r; // outs (K, KL, Out, DP, FC) — no change
+};
+
 // ── PDF REPORT GENERATOR ──
 const generateReportHTML=(outing,stats)=>{
   if(!stats)return'';
@@ -37,8 +51,8 @@ const generateReportHTML=(outing,stats)=>{
   const arsenalRows=PT.filter(t=>stats.ptBreak[t]?.n>0).sort((a,b)=>stats.ptBreak[b].n-stats.ptBreak[a].n).map(t=>{const d=stats.ptBreak[t];return`<tr><td style="font-weight:700">${PL[t]} <span style="color:#888">(${t})</span></td><td>${d.n}</td><td>${d.pct}%</td><td style="font-weight:700">${d.avgVel||'—'}</td><td style="color:${d.n>0&&Math.round(d.whiff/d.n*100)>=25?'#16a34a':'inherit'}">${d.n>0?Math.round(d.whiff/d.n*100)+'%':'—'}</td><td>${d.n>0?Math.round(d.ball/d.n*100)+'%':'—'}</td></tr>`}).join('');
   const beRows=be.map(e=>`<tr><td>${e.inning}</td><td>${e.type==='SB'?'⬥ Stolen Base':e.type==='CS'?'✓ Caught Stealing':e.type==='PO_ATT'?'◌ Pickoff (Safe)':'✓ Pickoff Out'}</td><td>${e.type==='SB'?'Stole '+e.base:e.type==='CS'?'CS at '+e.base:'at '+e.base}</td></tr>`).join('');
   const pitchRows=outing.pitches.map((p,i)=>`<tr><td>${i+1}</td><td>${p.inning}</td><td>${p.cntBefore?.b||0}-${p.cntBefore?.s||0}</td><td>${p.hand||'R'}</td><td style="font-weight:700">${p.type}</td><td>${p.vel||'—'}</td><td>${p.zone||'B'}</td><td>${p.result==='StrikeL'?'Called K':p.result==='StrikeS'?'Swing K':p.result}</td><td>${p.hitResult||p.hitType||'—'}</td></tr>`).join('');
-  const splitSection=stats.lSplit||stats.rSplit?`<div class="section"><div class="section-title">L / R Splits</div><div class="splits-grid">${[{hand:'L',split:stats.lSplit,color:'#2563eb'},{hand:'R',split:stats.rSplit,color:'#d97706'}].map(({hand,split,color})=>`<div class="split-box"><div class="split-hand" style="color:${color}">${hand}HH ${split?`· ${split.bf} AB`:'· No data'}</div>${split?`<div class="split-stats">${[{v:split.ba,l:'BA'},{v:split.kPct,l:'K%'},{v:split.bbPct,l:'BB%'},{v:split.whiffPct,l:'Whiff%'},{v:split.gbPct,l:'GB%'},{v:split.fbPct,l:'FB%'}].map(({v,l})=>`<div class="stat-box"><div class="stat-val" style="font-size:13px">${v||'—'}</div><div class="stat-lbl">${l}</div></div>`).join('')}</div><div style="font-size:10px;color:#666;margin-top:6px">Mix: ${PT.filter(t=>split.ptBk[t]?.n>0).sort((a,b)=>split.ptBk[b].n-split.ptBk[a].n).map(t=>`${t} ${split.ptBk[t].pct}%`).join(' · ')}</div>`:'<div style="color:#aaa;font-style:italic">No data</div>'}</div>`).join('')}</div></div>`:'';
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PitchTrack — ${outing.pitcher} — ${outing.date}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#111;background:#fff;padding:24px;font-size:12px;line-height:1.4}h1{font-size:20px;font-weight:900;letter-spacing:-0.5px}.sub{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:12px;border-bottom:3px solid #111}.outing-meta{text-align:right}.outing-meta .name{font-size:18px;font-weight:900}.outing-meta .det{font-size:11px;color:#555;margin-top:2px}.section{margin-bottom:18px}.section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e5e5e5}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}.stat-box{text-align:center;padding:8px 4px;border:1px solid #e5e5e5;border-radius:4px}.stat-val{font-size:17px;font-weight:900;line-height:1}.stat-lbl{font-size:8px;color:#888;margin-top:2px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}.base-row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}.base-item{text-align:center;min-width:60px}.base-val{font-size:24px;font-weight:900}.base-lbl{font-size:9px;color:#888;font-weight:700;text-transform:uppercase}table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:left;padding:5px 8px;background:#111;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px}td{padding:4px 8px;border-bottom:1px solid #f0f0f0}tr:nth-child(even) td{background:#fafafa}.splits-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.split-box{border:1px solid #e5e5e5;border-radius:6px;padding:10px}.split-hand{font-size:16px;font-weight:900;margin-bottom:8px}.split-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:6px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e5e5;font-size:9px;color:#aaa;text-align:center}@media print{body{padding:12px}@page{margin:1.5cm}}</style></head><body>
+  const splitSection=stats.lSplit||stats.rSplit?`<div class="section"><div class="section-title">L / R Splits</div><div class="splits-grid">${[{hand:'L',split:stats.lSplit,color:'#2563eb'},{hand:'R',split:stats.rSplit,color:'#d97706'}].map(({hand,split,color})=>`<div class="split-box"><div class="split-hand" style="color:${color}">${hand}HH ${split?`· ${split.bf} AB`:'· No data'}</div>${split?`<div class="split-stats">${[{v:split.ba,l:'BA'},{v:split.kPct,l:'K%'},{v:split.bbPct,l:'BB%'},{v:split.whiffPct,l:'Whiff%'}].map(({v,l})=>`<div class="stat-box"><div class="stat-val" style="font-size:13px">${v||'—'}</div><div class="stat-lbl">${l}</div></div>`).join('')}</div><div style="font-size:10px;color:#666;margin-top:6px">Mix: ${PT.filter(t=>split.ptBk[t]?.n>0).sort((a,b)=>split.ptBk[b].n-split.ptBk[a].n).map(t=>`${t} ${split.ptBk[t].pct}%`).join(' · ')}</div>`:'<div style="color:#aaa;font-style:italic;font-size:11px">No data</div>'}</div>`).join('')}</div></div>`:'';
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PitchTrack — ${outing.pitcher} — ${outing.date}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#111;background:#fff;padding:24px;font-size:12px;line-height:1.4}h1{font-size:20px;font-weight:900;letter-spacing:-0.5px}.sub{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:12px;border-bottom:3px solid #111}.outing-meta{text-align:right}.outing-meta .name{font-size:18px;font-weight:900}.outing-meta .det{font-size:11px;color:#555;margin-top:2px}.section{margin-bottom:18px}.section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#888;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e5e5e5}.stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}.stat-box{text-align:center;padding:8px 4px;border:1px solid #e5e5e5;border-radius:4px}.stat-val{font-size:17px;font-weight:900;line-height:1}.stat-lbl{font-size:8px;color:#888;margin-top:2px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}.base-row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}.base-item{text-align:center;min-width:60px}.base-val{font-size:24px;font-weight:900}.base-lbl{font-size:9px;color:#888;font-weight:700;text-transform:uppercase}table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:left;padding:5px 8px;background:#111;color:#fff;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px}td{padding:4px 8px;border-bottom:1px solid #f0f0f0}tr:nth-child(even) td{background:#fafafa}.splits-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.split-box{border:1px solid #e5e5e5;border-radius:6px;padding:10px}.split-hand{font-size:16px;font-weight:900;margin-bottom:8px}.split-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px}.footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e5e5;font-size:9px;color:#aaa;text-align:center}@media print{body{padding:12px}@page{margin:1.5cm}}</style></head><body>
 <div class="header"><div><h1>⚾ PitchTrack Pro</h1><div class="sub">Outing Report</div></div><div class="outing-meta"><div class="name">${outing.pitcher}</div><div class="det">${outing.date} · vs ${outing.opponent||'Opponent'}</div><div class="det">${stats.ip} IP · ${outing.pitches.length} pitches · ${stats.bf} BF</div></div></div>
 <div class="section"><div class="section-title">Outing Summary</div><div class="stats-grid"><div class="stat-box"><div class="stat-val">${stats.ip}</div><div class="stat-lbl">IP</div></div><div class="stat-box"><div class="stat-val">${stats.era}</div><div class="stat-lbl">ERA</div></div><div class="stat-box"><div class="stat-val">${stats.kbb}</div><div class="stat-lbl">K/BB</div></div><div class="stat-box"><div class="stat-val">${stats.ks}</div><div class="stat-lbl">K's</div></div><div class="stat-box"><div class="stat-val">${stats.walks}</div><div class="stat-lbl">BB</div></div><div class="stat-box"><div class="stat-val">${stats.hits}</div><div class="stat-lbl">Hits</div></div><div class="stat-box"><div class="stat-val">${stats.totalRuns}</div><div class="stat-lbl">Runs</div></div><div class="stat-box"><div class="stat-val">${stats.totalEarnedRuns}</div><div class="stat-lbl">ER</div></div><div class="stat-box"><div class="stat-val">${stats.lobPct}</div><div class="stat-lbl">LOB%</div></div><div class="stat-box"><div class="stat-val">${stats.babip}</div><div class="stat-lbl">BABIP</div></div><div class="stat-box"><div class="stat-val">${stats.whiffPct}</div><div class="stat-lbl">Whiff%</div></div><div class="stat-box"><div class="stat-val">${stats.fpsPct}</div><div class="stat-lbl">FPS%</div></div></div></div>
 <div class="section"><div class="section-title">Base Running</div><div class="base-row"><div class="base-item"><div class="base-val">${sbA}</div><div class="base-lbl">SB Allowed</div></div><div class="base-item"><div class="base-val">${csO}</div><div class="base-lbl">CS</div></div><div class="base-item"><div class="base-val">${sbPct}</div><div class="base-lbl">SB%</div></div><div class="base-item"><div class="base-val">${poAt}</div><div class="base-lbl">PO Att</div></div><div class="base-item"><div class="base-val">${poOt}</div><div class="base-lbl">PO Out</div></div></div>${be.length>0?`<table style="margin-top:10px;max-width:420px"><thead><tr><th>Inn</th><th>Event</th><th>Base</th></tr></thead><tbody>${beRows}</tbody></table>`:''}</div>
@@ -53,7 +67,9 @@ ${splitSection}
 function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={},baseEvts=[]){
   if(!pitches.length)return null;
   const tp=pitches.length,bf=abs.length;
-  const outs=abs.reduce((sum,ab)=>sum+(ab.result==='DP'?2:['Out','K','KL','FC','SF'].includes(ab.result)?1:0),0);
+  // ── CS and PO_OUT count as outs toward IP ──
+  const baseEventOuts=baseEvts.filter(e=>e.type==='CS'||e.type==='PO_OUT').length;
+  const outs=abs.reduce((sum,ab)=>sum+(ab.result==='DP'?2:['Out','K','KL','FC','SF'].includes(ab.result)?1:0),0)+baseEventOuts;
   const ipD=outs/3;
   const bbs=abs.filter(ab=>ab.result==='BB');
   const ks=abs.filter(ab=>['K','KL'].includes(ab.result));
@@ -96,7 +112,6 @@ function computeStats(pitches,abs,runsByInning={},earnedRunsByInning={},baseEvts
   const lobPct=lobDen>0?Math.round(lobNum/lobDen*100)+'%':'—';
   const countPitchMix=Object.fromEntries(COUNTS.map(c=>{const[b,s2]=c.split('-').map(Number);const cps=pitches.filter(p=>p.cntBefore?.b===b&&p.cntBefore?.s===s2);const tot=cps.length;const byType=Object.fromEntries(PT.map(t=>{const n=cps.filter(p=>p.type===t).length;return[t,{n,pct:tot>0?Math.round(n/tot*100):0}]}));const nStrike=cps.filter(p=>['StrikeL','StrikeS','Foul'].includes(p.result)).length;const nBall=cps.filter(p=>p.result==='Ball').length;const nInPlay=cps.filter(p=>p.result==='InPlay').length;return[c,{total:tot,byType,strikePct:tot>0?Math.round(nStrike/tot*100):0,ballPct:tot>0?Math.round(nBall/tot*100):0,inPlayPct:tot>0?Math.round(nInPlay/tot*100):0,nStrike,nBall,nInPlay}];}));
   const seqPatterns=Object.fromEntries(PT.map(t=>{const nexts=[];pitches.forEach((p,i)=>{if(p.type===t&&i+1<pitches.length)nexts.push(pitches[i+1].type)});const tot=nexts.length;const byType=Object.fromEntries(PT.map(t2=>{const n=nexts.filter(x=>x===t2).length;return[t2,{n,pct:tot>0?Math.round(n/tot*100):0}]}).filter(([,v])=>v.n>0));return[t,{total:tot,byType}];}));
-  // Base running stats
   const sbAllowed=baseEvts.filter(e=>e.type==='SB').length;
   const csOut=baseEvts.filter(e=>e.type==='CS').length;
   const poAtt=baseEvts.filter(e=>e.type==='PO_ATT').length;
@@ -269,12 +284,22 @@ export default function App(){
     let abRes=null;
     if(term){if(pend.result==='InPlay')abRes=pend.hitResult||'Out';else if(pend.result==='HBP')abRes='HBP';else if(newCnt.b>=4)abRes='BB';else if(newCnt.s>=3)abRes=pend.result==='StrikeL'?'KL':'K'}
     const newP=[...pitches,pitch];
-    if(term&&abRes){const cAB={...curAB,pitches:abPitches,result:abRes,fps:!!(abPitches[0]&&(abPitches[0].zone>0||['StrikeL','StrikeS','Foul'].includes(abPitches[0].result)))};setAtBats(prev=>[...prev,cAB]);setPitches(newP);setCurAB(mkAB(inning,false));}
-    else{setPitches(newP);setCurAB(prev=>({...prev,pitches:abPitches,cnt:newCnt}))}
+    if(term&&abRes){
+      const cAB={...curAB,pitches:abPitches,result:abRes,fps:!!(abPitches[0]&&(abPitches[0].zone>0||['StrikeL','StrikeS','Foul'].includes(abPitches[0].result)))};
+      setAtBats(prev=>[...prev,cAB]);
+      setPitches(newP);
+      // ── AUTO-UPDATE RUNNERS based on AB result ──
+      if(['1B','2B','3B','HR','BB','HBP','E'].includes(abRes)){
+        setRunners(autoUpdateRunners(abRes,runners));
+      }
+      setCurAB(mkAB(inning,false));
+    } else{
+      setPitches(newP);
+      setCurAB(prev=>({...prev,pitches:abPitches,cnt:newCnt}));
+    }
     setPend({...INIT_P});
-  },[pend,pitches,atBats,curAB,inning]);
+  },[pend,pitches,atBats,curAB,inning,runners]); // runners added to deps
 
-  // ── BASE EVENTS ──
   const logBaseEvent=useCallback((type,base)=>{
     setBaseEvents(prev=>[...prev,{id:uid(),type,base,inning}]);
     if(type==='SB'){
@@ -310,7 +335,6 @@ export default function App(){
   const movePitcher=(idx,dir)=>{setPitchers(prev=>{const arr=[...prev];const ni=idx+dir;if(ni<0||ni>=arr.length)return arr;[arr[idx],arr[ni]]=[arr[ni],arr[idx]];return arr;})};
   const deleteOuting=(id)=>{if(!window.confirm('Delete this outing? Cannot be undone.'))return;setOutings(prev=>prev.filter(o=>o.id!==id));if(ana.outingId===id)setAna(prev=>({...prev,outingId:'all'}));if(session)supabase.from('outings').delete().eq('id',id).then(()=>{})};
 
-  // ── PDF REPORT ──
   const generatePDFReport=()=>{
     const outing=outings.find(o=>o.id===ana.outingId);
     if(!outing)return;
@@ -347,7 +371,6 @@ export default function App(){
   const s=anaData.filtStats||anaData.stats;
   const vw=ana.view;
   const show=(key)=>vw==='all'||vw===key;
-  // Base event button style helpers
   const beBtn=(color,bg)=>({padding:'3px 7px',borderRadius:'4px',border:`1px solid ${color}`,background:bg||'transparent',color,cursor:'pointer',fontSize:'9px',fontWeight:'800',fontFamily:'inherit',transition:'all 0.12s'});
 
   if(authLoading)return(<div style={{background:'#030712',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}><div style={{color:'#475569',fontSize:'14px',fontFamily:'monospace'}}>Loading...</div></div>);
@@ -384,7 +407,6 @@ export default function App(){
         .be-btn:hover{opacity:0.8;}
       `}</style>
 
-      {/* MANAGE PITCHERS MODAL */}
       {showManage&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}} onClick={e=>{if(e.target===e.currentTarget)setShowManage(false)}}>
           <div style={{background:'#0f172a',border:'1px solid #1e3a5f',borderRadius:'14px',padding:'24px',width:'100%',maxWidth:'400px',maxHeight:'80vh',display:'flex',flexDirection:'column',boxShadow:'0 30px 80px rgba(0,0,0,0.7)'}}>
@@ -463,7 +485,7 @@ export default function App(){
                 </div>
                 <div style={{borderTop:'1px solid #1e3a5f',marginTop:'10px',paddingTop:'8px'}}><BaseRunnerDiamond runners={runners} onChange={setRunners} disabled={!active}/></div>
 
-                {/* ── BASE EVENTS ── */}
+                {/* BASE EVENTS — shown when runners are on */}
                 {active&&(runners.first||runners.second||runners.third)&&(
                   <div style={{borderTop:'1px solid #1e3a5f',marginTop:'8px',paddingTop:'8px'}}>
                     <div style={{fontSize:'9px',fontWeight:'800',color:'#f59e0b',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px',textAlign:'center'}}>Base Events</div>
@@ -474,16 +496,15 @@ export default function App(){
                     ].filter(({key})=>runners[key]).map(({key,pos,sb,cs})=>(
                       <div key={key} style={{display:'flex',alignItems:'center',gap:'4px',marginBottom:'5px',flexWrap:'wrap'}}>
                         <span style={{fontSize:'9px',fontWeight:'900',color:'#f59e0b',minWidth:'18px',fontFamily:'monospace'}}>{pos}</span>
-                        <button className="be-btn" onClick={()=>logBaseEvent('SB',sb)} style={{...beBtn('#f59e0b','rgba(245,158,11,0.1)'),padding:'3px 8px'}}>SB→{sb}</button>
-                        <button className="be-btn" onClick={()=>logBaseEvent('CS',cs)} style={{...beBtn('#22c55e','rgba(34,197,94,0.1)'),padding:'3px 8px'}}>CS</button>
-                        <button className="be-btn" onClick={()=>logBaseEvent('PO_ATT',pos)} style={{...beBtn('#475569'),padding:'3px 6px'}}>PO</button>
-                        <button className="be-btn" onClick={()=>logBaseEvent('PO_OUT',pos)} style={{...beBtn('#22c55e','rgba(34,197,94,0.1)'),padding:'3px 6px'}}>PO OUT</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('SB',sb)} style={{...beBtn('#f59e0b','rgba(245,158,11,0.1)')}}>SB→{sb}</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('CS',cs)} style={{...beBtn('#22c55e','rgba(34,197,94,0.1)')}}>CS</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('PO_ATT',pos)} style={{...beBtn('#475569')}}>PO</button>
+                        <button className="be-btn" onClick={()=>logBaseEvent('PO_OUT',pos)} style={{...beBtn('#22c55e','rgba(34,197,94,0.1)')}}>PO OUT</button>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Base events log */}
                 {baseEvents.length>0&&(
                   <div style={{borderTop:'1px solid #1e3a5f',marginTop:'8px',paddingTop:'8px'}}>
                     <div style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'5px'}}>Base Events Log</div>
@@ -491,7 +512,7 @@ export default function App(){
                       <div key={i} style={{display:'flex',gap:'6px',fontSize:'9px',padding:'2px 0',borderBottom:'1px solid #0a1929',alignItems:'center'}}>
                         <span style={{color:'#334155'}}>I{e.inning}</span>
                         <span style={{fontWeight:'800',color:e.type==='SB'?'#f59e0b':e.type==='CS'||e.type==='PO_OUT'?'#22c55e':'#475569'}}>
-                          {e.type==='SB'?`SB → ${e.base}`:e.type==='CS'?`CS @ ${e.base}`:e.type==='PO_ATT'?`PO (safe) ${e.base}`:`PO OUT ${e.base}`}
+                          {e.type==='SB'?`SB → ${e.base}`:e.type==='CS'?`CS @ ${e.base}`:e.type==='PO_ATT'?`PO safe ${e.base}`:`PO OUT ${e.base}`}
                         </span>
                       </div>
                     ))}
@@ -679,7 +700,6 @@ export default function App(){
                       [{v:s.bbInn,l:'BB/INN'},{v:s.lobb,l:'LOBB'},{v:s.lobbS,l:'LOBBS'},{v:s.bbsS,l:'BBS'},{v:s.dps,l:'DP'},{v:s.hrs,l:'HR'}],
                       [{v:s.whiffPct,l:'WHIFF%'},{v:s.weakPct,l:'WEAK%'},{v:s.hhbPct,l:'HHB%'},{v:s.fbPct,l:'FB%'},{v:s.gbPct,l:'GB%'},{v:s.ks,l:"K's"}],
                       [{v:s.babip,l:'BABIP'},{v:s.baRisp,l:'BA/RISP'},{v:s.outs,l:'Outs'},{v:null,l:''},{v:null,l:''},{v:null,l:''}],
-                      // Base running row
                       [{v:s.sbAllowed,l:'SB Allow',ac:'#f59e0b'},{v:s.csOut,l:'CS',ac:'#22c55e'},{v:s.sbPct,l:'SB%'},{v:s.poAtt,l:'PO Att'},{v:s.poOut,l:'PO Out',ac:'#22c55e'},{v:null,l:''}],
                     ].map((row,ri)=>(<div key={ri} style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:'8px'}}>{row.map(({v,l,ac},ci)=>v!==null?<StatBox key={ci} v={v} l={l} accent={ac||(l.includes('BB')||l==='LOBBS'||l==='LOBB'?'#f59e0b':l==="K's"||l==='BABIP'||l==='BA/RISP'?'#f43f5e':undefined)}/>:<div key={ci}/>)}</div>))}
                   </div>
