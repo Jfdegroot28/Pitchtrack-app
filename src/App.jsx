@@ -118,6 +118,47 @@ function ZoneView({pitches=[],pending=null,onClickZone=null,filterType='all',hit
   );
 }
 
+function DensityZone({pitches=[],filterType='all',hitsOnly=false}){
+  const filtered=useMemo(()=>{let d=filterType==='all'?pitches:pitches.filter(p=>p.type===filterType);if(hitsOnly)d=d.filter(p=>['1B','2B','3B','HR'].includes(p.hitResult));return d},[pitches,filterType,hitsOnly]);
+  const COLS=14,ROWS=16;
+  const grid=useMemo(()=>{
+    const cells=Array(ROWS).fill(null).map(()=>Array(COLS).fill(0));
+    filtered.forEach(p=>{
+      if(p.fx==null||p.fy==null)return;
+      const col=Math.min(Math.floor(p.fx*COLS),COLS-1);
+      const row=Math.min(Math.floor(p.fy*ROWS),ROWS-1);
+      cells[row][col]++;
+    });
+    const max=Math.max(...cells.flat(),1);
+    return cells.map(row=>row.map(v=>v/max));
+  },[filtered]);
+  const getColor=v=>{
+    if(v===0)return null;
+    if(v<0.15)return`rgba(59,130,246,${v*4})`;
+    if(v<0.35)return`rgba(99,179,237,${0.3+v*0.8})`;
+    if(v<0.55)return`rgba(34,197,94,${0.4+v*0.6})`;
+    if(v<0.75)return`rgba(245,158,11,${0.5+v*0.5})`;
+    return`rgba(244,63,94,${0.65+v*0.35})`;
+  };
+  const cW=W/COLS,cH=H/ROWS;
+  return(
+    <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',maxWidth:220,height:'auto',display:'block',margin:'0 auto'}}>
+      <rect width={W} height={H} fill="#060d1a" rx="8"/>
+      {grid.map((row,ri)=>row.map((v,ci)=>{const color=getColor(v);return color?<rect key={`${ri}-${ci}`} x={ci*cW} y={ri*cH} width={cW+0.5} height={cH+0.5} fill={color}/>:null;}))}
+      <rect x={ZL-16} y={ZT-16} width={ZW+32} height={ZH+32} fill="none" stroke="#1e3a5f" strokeWidth="1" strokeDasharray="4,3" rx="3" opacity="0.6"/>
+      <rect x={ZL} y={ZT} width={ZW} height={ZH} fill="none" stroke="#2d6a9f" strokeWidth="2"/>
+      {[1,2].map(i=><g key={i}><line x1={ZL+CW*i} y1={ZT} x2={ZL+CW*i} y2={ZB} stroke="#1a3550" strokeWidth="1"/><line x1={ZL} y1={ZT+CR*i} x2={ZR} y2={ZT+CR*i} stroke="#1a3550" strokeWidth="1"/></g>)}
+      {Array.from({length:9},(_,i)=>{const c=i%3,r=Math.floor(i/3);return <text key={i} x={ZL+c*CW+CW/2} y={ZT+r*CR+CR/2+4} textAnchor="middle" fill="#1e3d60" fontSize="10" fontWeight="800" fontFamily="monospace" opacity="0.5">{i+1}</text>})}
+      <polygon points={`${W/2-10},${H-20} ${W/2+10},${H-20} ${W/2+14},${H-12} ${W/2},${H-7} ${W/2-14},${H-12}`} fill="#0a1929" stroke="#2d6a9f" strokeWidth="1.5"/>
+      <g transform={`translate(6,${H-14})`}>
+        {['#3b82f6','#22c55e','#f59e0b','#f43f5e'].map((c,i)=><rect key={i} x={i*10} y={0} width={9} height={7} fill={c} rx="1" opacity="0.8"/>)}
+        <text x="0" y="16" fill="#334155" fontSize="7.5" fontFamily="monospace">low → high density</text>
+      </g>
+      <text x={W-6} y={H-4} textAnchor="end" fill="#334155" fontSize="8" fontFamily="monospace">{filtered.length}p</text>
+    </svg>
+  );
+}
+
 function BaseRunnerDiamond({runners,onChange,disabled}){
   const bases=[{key:'second',cx:55,cy:16},{key:'first',cx:90,cy:50},{key:'third',cx:20,cy:50}];
   return(
@@ -169,7 +210,7 @@ export default function App(){
   const [pend,setPend]=useState({...INIT_P});
   const [inningRuns,setInningRuns]=useState({});
   const [runners,setRunners]=useState({...INIT_RUNNERS});
-  const [ana,setAna]=useState({pitcher:'',outingId:'all',filterType:'all',hitsOnly:false,handFilter:'all'});
+  const [ana,setAna]=useState({pitcher:'',outingId:'all',filterType:'all',hitsOnly:false,handFilter:'all',heatMode:'dots'});
   const [session,setSession]=useState(null);
   const [authLoading,setAuthLoading]=useState(true);
   const [authEmail,setAuthEmail]=useState('');
@@ -178,7 +219,6 @@ export default function App(){
   const [authMode,setAuthMode]=useState('signin');
   const [authDone,setAuthDone]=useState(false);
 
-  // Auto-set RISP from runners
   useEffect(()=>{
     setCurAB(prev=>({...prev,risp:runners.second||runners.third}));
   },[runners.second,runners.third]);
@@ -309,22 +349,16 @@ export default function App(){
       {tab==='chart'&&(
         <div style={{padding:'14px 16px',maxWidth:'1320px',margin:'0 auto'}}>
           <div style={{...card({padding:'12px 16px',marginBottom:'14px',display:'flex',flexWrap:'wrap',gap:'10px',alignItems:'flex-end'})}}>
-            <div style={{flex:'0 0 auto'}}>
-              <span style={lbl}>Pitcher</span>
-              <select value={info.pitcher} onChange={e=>setInfo(p=>({...p,pitcher:e.target.value}))} style={{...inp,minWidth:'160px'}} disabled={active}>
-                <option value="">— Select —</option>
-                {pitchers.map(p=><option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
+            <div style={{flex:'0 0 auto'}}><span style={lbl}>Pitcher</span><select value={info.pitcher} onChange={e=>setInfo(p=>({...p,pitcher:e.target.value}))} style={{...inp,minWidth:'160px'}} disabled={active}><option value="">— Select —</option>{pitchers.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
             <div style={{flex:'0 0 auto'}}><span style={lbl}>Date</span><input type="date" value={info.date} onChange={e=>setInfo(p=>({...p,date:e.target.value}))} style={{...inp,width:'140px'}} disabled={active}/></div>
             <div style={{flex:'0 0 auto'}}><span style={lbl}>Opponent</span><input value={info.opponent} onChange={e=>setInfo(p=>({...p,opponent:e.target.value}))} style={{...inp,width:'110px'}} placeholder="vs. Team" disabled={active}/></div>
             <div style={{display:'flex',gap:'8px',flex:'0 0 auto'}}>
-              {!active?<button onClick={startOuting} disabled={!info.pitcher} style={{padding:'8px 20px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'12px',background:info.pitcher?'rgba(34,197,94,0.9)':'#0f172a',color:'#fff',letterSpacing:'0.5px',transition:'all 0.15s',fontFamily:'inherit',opacity:info.pitcher?1:0.4}}>▶ START OUTING</button>
+              {!active?<button onClick={startOuting} disabled={!info.pitcher} style={{padding:'8px 20px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'12px',background:info.pitcher?'rgba(34,197,94,0.9)':'#0f172a',color:'#fff',letterSpacing:'0.5px',fontFamily:'inherit',opacity:info.pitcher?1:0.4}}>▶ START OUTING</button>
               :<button onClick={handleEndOuting} style={{padding:'8px 20px',borderRadius:'7px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'12px',background:'rgba(239,68,68,0.85)',color:'#fff',letterSpacing:'0.5px',fontFamily:'inherit'}}>■ END OUTING</button>}
             </div>
             <div style={{marginLeft:'auto',display:'flex',gap:'6px',alignItems:'flex-end',flex:'0 0 auto'}}>
               <div><span style={lbl}>Add Pitcher</span><input value={newPName} onChange={e=>setNewPName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addPitcher()} placeholder="Last, F." style={{...inp,width:'120px'}}/></div>
-              <button onClick={addPitcher} style={{padding:'8px 12px',borderRadius:'6px',border:'1px solid #1e3a5f',cursor:'pointer',fontWeight:'800',background:'transparent',color:'#60a5fa',fontSize:'16px',lineHeight:1,transition:'all 0.15s',fontFamily:'inherit'}}>+</button>
+              <button onClick={addPitcher} style={{padding:'8px 12px',borderRadius:'6px',border:'1px solid #1e3a5f',cursor:'pointer',fontWeight:'800',background:'transparent',color:'#60a5fa',fontSize:'16px',lineHeight:1,fontFamily:'inherit'}}>+</button>
             </div>
           </div>
 
@@ -347,7 +381,6 @@ export default function App(){
                   <div>PITCH <span style={{color:'#e2e8f0',fontWeight:'700'}}>#{pitches.length+1}</span></div>
                   <div>AB-P <span style={{color:'#e2e8f0',fontWeight:'700'}}>{curAB.pitches.length+1}</span></div>
                 </div>
-                {/* BASE RUNNER DIAMOND */}
                 <div style={{borderTop:'1px solid #1e3a5f',marginTop:'10px',paddingTop:'8px'}}>
                   <BaseRunnerDiamond runners={runners} onChange={setRunners} disabled={!active}/>
                 </div>
@@ -410,13 +443,11 @@ export default function App(){
               </div>
               <div style={{marginBottom:'14px',padding:'8px 10px',background:'#060d1a',borderRadius:'6px',border:'1px solid #1e3a5f'}}>
                 <span style={lbl}>Placement</span>
-                {pend.fx?(
-                  <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
-                    <span style={{fontSize:'13px',fontWeight:'800',color:'#e2e8f0'}}>Zone {getZone(pend.fx,pend.fy)||<span style={{color:'#60a5fa'}}>Ball</span>}</span>
-                    {getComp(pend.fx,pend.fy)&&<span style={{fontSize:'9px',color:'#f59e0b',background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.2)',padding:'2px 5px',borderRadius:'3px',fontWeight:'800',letterSpacing:'0.5px'}}>COMP</span>}
-                    <button onClick={()=>setPend(p=>({...p,fx:null,fy:null}))} style={{marginLeft:'auto',background:'transparent',border:'none',cursor:'pointer',color:'#475569',fontSize:'14px',lineHeight:1}}>×</button>
-                  </div>
-                ):<span style={{fontSize:'12px',color:'#334155',fontStyle:'italic'}}>← Click on the zone to place</span>}
+                {pend.fx?(<div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  <span style={{fontSize:'13px',fontWeight:'800',color:'#e2e8f0'}}>Zone {getZone(pend.fx,pend.fy)||<span style={{color:'#60a5fa'}}>Ball</span>}</span>
+                  {getComp(pend.fx,pend.fy)&&<span style={{fontSize:'9px',color:'#f59e0b',background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.2)',padding:'2px 5px',borderRadius:'3px',fontWeight:'800'}}>COMP</span>}
+                  <button onClick={()=>setPend(p=>({...p,fx:null,fy:null}))} style={{marginLeft:'auto',background:'transparent',border:'none',cursor:'pointer',color:'#475569',fontSize:'14px',lineHeight:1}}>×</button>
+                </div>):<span style={{fontSize:'12px',color:'#334155',fontStyle:'italic'}}>← Click on the zone to place</span>}
               </div>
               <div style={{marginBottom:'14px'}}>
                 <span style={lbl}>Result</span>
@@ -427,39 +458,17 @@ export default function App(){
               {pend.result==='InPlay'&&(
                 <div style={{background:'#060d1a',borderRadius:'8px',padding:'12px',marginBottom:'14px',border:'1px solid #1e3a5f'}}>
                   <div style={{fontWeight:'800',fontSize:'10px',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px'}}>In-Play Details</div>
-                  <div style={{marginBottom:'10px'}}>
-                    <span style={lbl}>Hit Type</span>
-                    <div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>
-                      {HT.map(({k,l})=><button key={k} onClick={()=>setPend(p=>({...p,hitType:k}))} style={{...tog(k,pend.hitType,'#475569'),padding:'5px 10px'}}>{l}</button>)}
-                    </div>
-                  </div>
-                  <div style={{marginBottom:'10px'}}>
-                    <span style={lbl}>Strength</span>
-                    <div style={{display:'flex',gap:'4px'}}>
-                      {HS.map(({k,l})=>{const sc=k==='Weak'?'#22c55e':k==='Hard'?'#ef4444':'#f59e0b';return <button key={k} onClick={()=>setPend(p=>({...p,hitStr:k}))} style={{...tog(k,pend.hitStr,sc),padding:'5px 11px'}}>{l}</button>})}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={lbl}>Outcome</span>
-                    <div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>
-                      {HR_.map(({k,l,c})=><button key={k} onClick={()=>setPend(p=>({...p,hitResult:k}))} style={{...tog(k,pend.hitResult,c),padding:'5px 10px'}}>{l}</button>)}
-                    </div>
-                  </div>
+                  <div style={{marginBottom:'10px'}}><span style={lbl}>Hit Type</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HT.map(({k,l})=><button key={k} onClick={()=>setPend(p=>({...p,hitType:k}))} style={{...tog(k,pend.hitType,'#475569'),padding:'5px 10px'}}>{l}</button>)}</div></div>
+                  <div style={{marginBottom:'10px'}}><span style={lbl}>Strength</span><div style={{display:'flex',gap:'4px'}}>{HS.map(({k,l})=>{const sc=k==='Weak'?'#22c55e':k==='Hard'?'#ef4444':'#f59e0b';return <button key={k} onClick={()=>setPend(p=>({...p,hitStr:k}))} style={{...tog(k,pend.hitStr,sc),padding:'5px 11px'}}>{l}</button>})}</div></div>
+                  <div><span style={lbl}>Outcome</span><div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>{HR_.map(({k,l,c})=><button key={k} onClick={()=>setPend(p=>({...p,hitResult:k}))} style={{...tog(k,pend.hitResult,c),padding:'5px 10px'}}>{l}</button>)}</div></div>
                 </div>
               )}
               <div style={{display:'flex',gap:'14px',marginBottom:'14px',padding:'8px 10px',background:'#060d1a',borderRadius:'6px',border:'1px solid #1e3a5f',flexWrap:'wrap',alignItems:'center'}}>
                 <span style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1px',whiteSpace:'nowrap'}}>AB Flags</span>
-                {[{k:'leadoff',l:'Leadoff'},{k:'risp',l:'RISP'}].map(({k,l})=>(
-                  <label key={k} style={{display:'flex',alignItems:'center',gap:'5px',cursor:'pointer',fontSize:'11px',color:'#64748b',fontWeight:'600'}}>
-                    <input type="checkbox" checked={!!curAB[k]} onChange={e=>setCurAB(p=>({...p,[k]:e.target.checked}))} style={{accentColor:'#3b82f6',width:'13px',height:'13px'}}/>
-                    {l}
-                  </label>
-                ))}
+                {[{k:'leadoff',l:'Leadoff'},{k:'risp',l:'RISP'}].map(({k,l})=>(<label key={k} style={{display:'flex',alignItems:'center',gap:'5px',cursor:'pointer',fontSize:'11px',color:'#64748b',fontWeight:'600'}}><input type="checkbox" checked={!!curAB[k]} onChange={e=>setCurAB(p=>({...p,[k]:e.target.checked}))} style={{accentColor:'#3b82f6',width:'13px',height:'13px'}}/>{l}</label>))}
                 <span style={{marginLeft:'auto',fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'4px',background:curAB.hand==='L'?'rgba(59,130,246,0.12)':'rgba(251,191,36,0.12)',color:curAB.hand==='L'?'#3b82f6':'#fbbf24',border:`1px solid ${curAB.hand==='L'?'rgba(59,130,246,0.25)':'rgba(251,191,36,0.25)'}`,fontFamily:'monospace'}}>{curAB.hand}HH</span>
               </div>
-              <button className="log-btn" onClick={handleLogPitch}
-                disabled={!active||!pend.fx||!pend.result||(pend.result==='InPlay'&&(!pend.hitType||!pend.hitResult))}
-                style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'900',fontSize:'13px',background:'#1d4ed8',color:'#fff',marginBottom:'8px',letterSpacing:'0.5px',transition:'all 0.15s',fontFamily:'inherit',opacity:(!active||!pend.fx||!pend.result)?0.35:1}}>
+              <button className="log-btn" onClick={handleLogPitch} disabled={!active||!pend.fx||!pend.result||(pend.result==='InPlay'&&(!pend.hitType||!pend.hitResult))} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'900',fontSize:'13px',background:'#1d4ed8',color:'#fff',marginBottom:'8px',letterSpacing:'0.5px',transition:'all 0.15s',fontFamily:'inherit',opacity:(!active||!pend.fx||!pend.result)?0.35:1}}>
                 ⚾ LOG PITCH{pend.type?` · ${pend.type}`:''}  {pend.vel?`· ${pend.vel} mph`:''}
               </button>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px'}}>
@@ -485,9 +494,7 @@ export default function App(){
                     <div key={i} style={{display:'flex',alignItems:'center',gap:'6px',padding:'5px 0',borderBottom:'1px solid #0a1929'}}>
                       <span style={{fontSize:'9px',color:'#334155',width:'14px',textAlign:'center',fontWeight:'700'}}>I{ab.inning}</span>
                       <span style={{fontSize:'9px',fontWeight:'900',padding:'1px 5px',borderRadius:'3px',background:ab.hand==='L'?'rgba(59,130,246,0.12)':'rgba(251,191,36,0.12)',color:ab.hand==='L'?'#3b82f6':'#fbbf24',border:`1px solid ${ab.hand==='L'?'rgba(59,130,246,0.25)':'rgba(251,191,36,0.25)'}`}}>{ab.hand||'R'}</span>
-                      <div style={{display:'flex',gap:'2px',flex:1,flexWrap:'wrap'}}>
-                        {(ab.pitches||[]).map((p,j)=>(<div key={j} style={{width:'15px',height:'15px',borderRadius:'50%',background:PC[p.type]||'#475569',border:p.result==='Ball'?'1.5px solid #3b82f6':'none',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'6px',color:'#fff',fontWeight:'800',fontFamily:'monospace'}}>{p.type.slice(0,1)}</div>))}
-                      </div>
+                      <div style={{display:'flex',gap:'2px',flex:1,flexWrap:'wrap'}}>{(ab.pitches||[]).map((p,j)=>(<div key={j} style={{width:'15px',height:'15px',borderRadius:'50%',background:PC[p.type]||'#475569',border:p.result==='Ball'?'1.5px solid #3b82f6':'none',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'6px',color:'#fff',fontWeight:'800',fontFamily:'monospace'}}>{p.type.slice(0,1)}</div>))}</div>
                       <span style={{fontSize:'11px',fontWeight:'800',color:resultColor(ab.result),minWidth:'28px',textAlign:'right',fontFamily:'monospace'}}>{ab.result}</span>
                     </div>
                   ))}
@@ -532,12 +539,7 @@ export default function App(){
           <div style={{...card({padding:'12px 16px',marginBottom:'14px',display:'flex',flexWrap:'wrap',gap:'10px',alignItems:'flex-end'})}}>
             <div><span style={lbl}>Pitcher</span><select value={ana.pitcher} onChange={e=>setAna(p=>({...p,pitcher:e.target.value,outingId:'all'}))} style={{...inp,minWidth:'160px'}}><option value="">— Select Pitcher —</option>{pitchers.map(p=><option key={p} value={p}>{p}</option>)}</select></div>
             {ana.pitcher&&(<div><span style={lbl}>Outing</span><select value={ana.outingId} onChange={e=>setAna(p=>({...p,outingId:e.target.value}))} style={{...inp,minWidth:'180px'}}><option value="all">All Outings ({anaData.outings.length})</option>{outings.filter(o=>o.pitcher===ana.pitcher).map(o=><option key={o.id} value={o.id}>{o.date} vs {o.opponent||'Opp'} ({o.pitches.length}p)</option>)}</select></div>)}
-            {anaData.pitches.length>0&&(
-              <div style={{display:'flex',alignItems:'center',gap:'6px',flex:'0 0 auto'}}>
-                <span style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px'}}>View vs</span>
-                {[{k:'all',l:'All',c:'#475569'},{k:'L',l:'⬡ LHH',c:'#3b82f6'},{k:'R',l:'⬡ RHH',c:'#fbbf24'}].map(({k,l,c})=>(<button key={k} onClick={()=>setAna(p=>({...p,handFilter:k}))} style={{...tog(k,ana.handFilter,c),padding:'5px 12px',fontSize:'11px'}}>{l}</button>))}
-              </div>
-            )}
+            {anaData.pitches.length>0&&(<div style={{display:'flex',alignItems:'center',gap:'6px',flex:'0 0 auto'}}><span style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px'}}>View vs</span>{[{k:'all',l:'All',c:'#475569'},{k:'L',l:'⬡ LHH',c:'#3b82f6'},{k:'R',l:'⬡ RHH',c:'#fbbf24'}].map(({k,l,c})=>(<button key={k} onClick={()=>setAna(p=>({...p,handFilter:k}))} style={{...tog(k,ana.handFilter,c),padding:'5px 12px',fontSize:'11px'}}>{l}</button>))}</div>)}
             {anaData.pitches.length>0&&<div style={{marginLeft:'auto',fontSize:'11px',color:'#334155',fontWeight:'700'}}>{(anaData.filtPitches||anaData.pitches).length} pitches · {(anaData.filtAtBats||anaData.atBats).length} AB · {anaData.outings.length} outing{anaData.outings.length!==1?'s':''}</div>}
           </div>
 
@@ -573,8 +575,14 @@ export default function App(){
                   )})()}
                 </div>
 
+                {/* HEAT MAP with Dots/Density toggle */}
                 <div style={card()}>
-                  <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'10px'}}>Heat Map</div>
+                  <div style={{fontSize:'9px',fontWeight:'800',color:'#2d6a9f',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span>Heat Map</span>
+                    <div style={{display:'flex',gap:'3px'}}>
+                      {[{k:'dots',l:'Dots'},{k:'density',l:'Density'}].map(({k,l})=>(<button key={k} onClick={()=>setAna(p=>({...p,heatMode:k}))} style={{...tog(k,ana.heatMode,'#2d6a9f'),padding:'2px 8px',fontSize:'9px'}}>{l}</button>))}
+                    </div>
+                  </div>
                   <div style={{display:'flex',gap:'4px',marginBottom:'8px'}}>
                     {[{k:'all',l:'All',c:'#475569'},{k:'L',l:'LHH',c:'#3b82f6'},{k:'R',l:'RHH',c:'#fbbf24'}].map(({k,l,c})=>(<button key={k} onClick={()=>setAna(p=>({...p,handFilter:k}))} style={{...tog(k,ana.handFilter,c),fontSize:'10px',padding:'3px 9px',flex:1}}>{l}</button>))}
                   </div>
@@ -585,7 +593,10 @@ export default function App(){
                   <label style={{display:'flex',alignItems:'center',gap:'5px',cursor:'pointer',fontSize:'10px',color:'#64748b',marginBottom:'8px',fontWeight:'700'}}>
                     <input type="checkbox" checked={ana.hitsOnly} onChange={e=>setAna(p=>({...p,hitsOnly:e.target.checked}))} style={{accentColor:'#f43f5e',width:'12px',height:'12px'}}/>Hits Only
                   </label>
-                  <ZoneView pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>
+                  {ana.heatMode==='density'
+                    ?<DensityZone pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>
+                    :<ZoneView pitches={anaData.filtPitches||anaData.pitches} filterType={ana.filterType} hitsOnly={ana.hitsOnly}/>
+                  }
                   <div style={{display:'flex',flexWrap:'wrap',gap:'5px',marginTop:'8px'}}>
                     {PT.filter(t=>(anaData.filtPitches||anaData.pitches).some(p=>p.type===t)).map(t=>(<div key={t} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px',color:'#475569'}}><div style={{width:'7px',height:'7px',borderRadius:'50%',background:PC[t]}}/>{PL[t]}</div>))}
                   </div>
@@ -598,29 +609,16 @@ export default function App(){
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                     {[{hand:'L',split:anaData.stats.lSplit,c:'#3b82f6',bg:'rgba(59,130,246,0.06)'},{hand:'R',split:anaData.stats.rSplit,c:'#fbbf24',bg:'rgba(251,191,36,0.06)'}].map(({hand,split,c,bg})=>(
                       <div key={hand} style={{background:bg,border:`1px solid ${c}22`,borderRadius:'8px',padding:'12px'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px'}}>
-                          <span style={{fontSize:'16px',fontWeight:'900',color:c,fontFamily:'monospace'}}>{hand}HH</span>
-                          <span style={{fontSize:'11px',color:'#475569',fontWeight:'700'}}>{split?`${split.bf} AB · ${split.tp} pitches`:'No data'}</span>
-                        </div>
-                        {split?(
-                          <>
-                            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'6px',marginBottom:'10px'}}>
-                              {[{v:split.ba,l:'BA',ac:parseFloat(split.ba)>=0.300?'#f43f5e':undefined},{v:split.babip,l:'BABIP'},{v:split.kPct,l:'K%',ac:'#22c55e'},{v:split.bbPct,l:'BB%',ac:'#f59e0b'},{v:split.whiffPct,l:'Whiff%'},{v:split.fpsPct,l:'FPS%'},{v:split.gbPct,l:'GB%'},{v:split.fbPct,l:'FB%'}].map(({v,l,ac},i)=>(
-                                <div key={i} style={{textAlign:'center',padding:'7px 4px',background:'#060d1a',borderRadius:'6px',border:'1px solid #1e3a5f'}}>
-                                  <div style={{fontSize:'15px',fontWeight:'900',color:ac||'#e2e8f0',lineHeight:1,fontFamily:'monospace'}}>{v||'—'}</div>
-                                  <div style={{fontSize:'8px',color:'#475569',marginTop:'2px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.5px'}}>{l}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{fontSize:'9px',fontWeight:'800',color:'#334155',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px'}}>Pitch Mix</div>
-                            <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
-                              {PT.filter(t=>split.ptBk[t]?.n>0).sort((a,b)=>split.ptBk[b].n-split.ptBk[a].n).map(t=>{
-                                const d=split.ptBk[t];const whiffPct=d.n>0?Math.round(d.whiff/d.n*100):0;
-                                return(<div key={t} style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'10px'}}><span style={{background:PC[t],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'24px',textAlign:'center',fontFamily:'monospace'}}>{t}</span><div style={{flex:1,height:'5px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}><div style={{width:d.pct+'%',height:'100%',background:PC[t],borderRadius:'3px',transition:'width 0.3s'}}/></div><span style={{color:'#e2e8f0',fontWeight:'700',minWidth:'30px',fontFamily:'monospace'}}>{d.pct}%</span><span style={{color:'#334155',minWidth:'14px',fontFamily:'monospace',fontSize:'9px'}}>{d.n}p</span>{whiffPct>0&&<span style={{color:'#22c55e',fontSize:'9px',fontWeight:'700'}}>{whiffPct}%K</span>}</div>);
-                              })}
-                            </div>
-                          </>
-                        ):<div style={{fontSize:'11px',color:'#1e3a5f',fontStyle:'italic',textAlign:'center',padding:'16px 0'}}>No {hand}HH at-bats recorded</div>}
+                        <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px'}}><span style={{fontSize:'16px',fontWeight:'900',color:c,fontFamily:'monospace'}}>{hand}HH</span><span style={{fontSize:'11px',color:'#475569',fontWeight:'700'}}>{split?`${split.bf} AB · ${split.tp} pitches`:'No data'}</span></div>
+                        {split?(<>
+                          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'6px',marginBottom:'10px'}}>
+                            {[{v:split.ba,l:'BA',ac:parseFloat(split.ba)>=0.300?'#f43f5e':undefined},{v:split.babip,l:'BABIP'},{v:split.kPct,l:'K%',ac:'#22c55e'},{v:split.bbPct,l:'BB%',ac:'#f59e0b'},{v:split.whiffPct,l:'Whiff%'},{v:split.fpsPct,l:'FPS%'},{v:split.gbPct,l:'GB%'},{v:split.fbPct,l:'FB%'}].map(({v,l,ac},i)=>(<div key={i} style={{textAlign:'center',padding:'7px 4px',background:'#060d1a',borderRadius:'6px',border:'1px solid #1e3a5f'}}><div style={{fontSize:'15px',fontWeight:'900',color:ac||'#e2e8f0',lineHeight:1,fontFamily:'monospace'}}>{v||'—'}</div><div style={{fontSize:'8px',color:'#475569',marginTop:'2px',fontWeight:'700',textTransform:'uppercase',letterSpacing:'0.5px'}}>{l}</div></div>))}
+                          </div>
+                          <div style={{fontSize:'9px',fontWeight:'800',color:'#334155',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px'}}>Pitch Mix</div>
+                          <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+                            {PT.filter(t=>split.ptBk[t]?.n>0).sort((a,b)=>split.ptBk[b].n-split.ptBk[a].n).map(t=>{const d=split.ptBk[t];const whiffPct=d.n>0?Math.round(d.whiff/d.n*100):0;return(<div key={t} style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'10px'}}><span style={{background:PC[t],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'24px',textAlign:'center',fontFamily:'monospace'}}>{t}</span><div style={{flex:1,height:'5px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}><div style={{width:d.pct+'%',height:'100%',background:PC[t],borderRadius:'3px',transition:'width 0.3s'}}/></div><span style={{color:'#e2e8f0',fontWeight:'700',minWidth:'30px',fontFamily:'monospace'}}>{d.pct}%</span><span style={{color:'#334155',minWidth:'14px',fontFamily:'monospace',fontSize:'9px'}}>{d.n}p</span>{whiffPct>0&&<span style={{color:'#22c55e',fontSize:'9px',fontWeight:'700'}}>{whiffPct}%K</span>}</div>);})}
+                          </div>
+                        </>):<div style={{fontSize:'11px',color:'#1e3a5f',fontStyle:'italic',textAlign:'center',padding:'16px 0'}}>No {hand}HH at-bats recorded</div>}
                       </div>
                     ))}
                   </div>
@@ -647,32 +645,26 @@ export default function App(){
                             {hitPct!=null&&hitPct>0&&<span style={{fontSize:'10px',fontWeight:'800',color:'#f43f5e',background:'rgba(244,63,94,0.08)',padding:'1px 5px',borderRadius:'3px'}}>{hitPct}% HIT</span>}
                           </div>
                         </div>
-                        {mix.total>0?(
-                          <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-                            <div>
-                              <div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'3px'}}>Pitch Selection</div>
-                              <div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',gap:'1px'}}>
-                                {usedTypes.map(t=>(<div key={t} style={{width:mix.byType[t].pct+'%',background:PC[t],minWidth:mix.byType[t].pct>0?'3px':0,transition:'width 0.3s'}} title={`${t}: ${mix.byType[t].pct}%`}/>))}
-                              </div>
-                              <div style={{display:'flex',flexWrap:'wrap',gap:'4px',marginTop:'3px'}}>
-                                {usedTypes.map(t=>(<div key={t} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:PC[t],flexShrink:0}}/><span style={{color:'#e2e8f0',fontWeight:'800',fontFamily:'monospace'}}>{t}</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.byType[t].pct}%</span></div>))}
-                              </div>
+                        {mix.total>0?(<div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
+                          <div>
+                            <div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'3px'}}>Pitch Selection</div>
+                            <div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',gap:'1px'}}>{usedTypes.map(t=>(<div key={t} style={{width:mix.byType[t].pct+'%',background:PC[t],minWidth:mix.byType[t].pct>0?'3px':0,transition:'width 0.3s'}} title={`${t}: ${mix.byType[t].pct}%`}/>))}</div>
+                            <div style={{display:'flex',flexWrap:'wrap',gap:'4px',marginTop:'3px'}}>{usedTypes.map(t=>(<div key={t} style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:PC[t],flexShrink:0}}/><span style={{color:'#e2e8f0',fontWeight:'800',fontFamily:'monospace'}}>{t}</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.byType[t].pct}%</span></div>))}</div>
+                          </div>
+                          <div>
+                            <div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'3px'}}>Next Pitch Result</div>
+                            <div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',gap:'1px'}}>
+                              {mix.strikePct>0&&<div style={{width:mix.strikePct+'%',background:'#22c55e',minWidth:'3px',transition:'width 0.3s'}}/>}
+                              {mix.ballPct>0&&<div style={{width:mix.ballPct+'%',background:'#ef4444',minWidth:'3px',transition:'width 0.3s'}}/>}
+                              {mix.inPlayPct>0&&<div style={{width:mix.inPlayPct+'%',background:'#f59e0b',minWidth:'3px',transition:'width 0.3s'}}/>}
                             </div>
-                            <div>
-                              <div style={{fontSize:'8px',fontWeight:'700',color:'#334155',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:'3px'}}>Next Pitch Result</div>
-                              <div style={{display:'flex',height:'8px',borderRadius:'4px',overflow:'hidden',gap:'1px'}}>
-                                {mix.strikePct>0&&<div style={{width:mix.strikePct+'%',background:'#22c55e',minWidth:'3px',transition:'width 0.3s'}}/>}
-                                {mix.ballPct>0&&<div style={{width:mix.ballPct+'%',background:'#ef4444',minWidth:'3px',transition:'width 0.3s'}}/>}
-                                {mix.inPlayPct>0&&<div style={{width:mix.inPlayPct+'%',background:'#f59e0b',minWidth:'3px',transition:'width 0.3s'}}/>}
-                              </div>
-                              <div style={{display:'flex',gap:'8px',marginTop:'3px'}}>
-                                {mix.strikePct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#22c55e',flexShrink:0}}/><span style={{color:'#22c55e',fontWeight:'800'}}>Strike</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.strikePct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nStrike})</span></div>}
-                                {mix.ballPct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#ef4444',flexShrink:0}}/><span style={{color:'#ef4444',fontWeight:'800'}}>Ball</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.ballPct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nBall})</span></div>}
-                                {mix.inPlayPct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#f59e0b',flexShrink:0}}/><span style={{color:'#f59e0b',fontWeight:'800'}}>In Play</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.inPlayPct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nInPlay})</span></div>}
-                              </div>
+                            <div style={{display:'flex',gap:'8px',marginTop:'3px'}}>
+                              {mix.strikePct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#22c55e',flexShrink:0}}/><span style={{color:'#22c55e',fontWeight:'800'}}>Strike</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.strikePct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nStrike})</span></div>}
+                              {mix.ballPct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#ef4444',flexShrink:0}}/><span style={{color:'#ef4444',fontWeight:'800'}}>Ball</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.ballPct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nBall})</span></div>}
+                              {mix.inPlayPct>0&&<div style={{display:'flex',alignItems:'center',gap:'3px',fontSize:'9px'}}><div style={{width:'6px',height:'6px',borderRadius:'2px',background:'#f59e0b',flexShrink:0}}/><span style={{color:'#f59e0b',fontWeight:'800'}}>In Play</span><span style={{color:'#475569',fontWeight:'700'}}>{mix.inPlayPct}%</span><span style={{color:'#334155',fontSize:'8px'}}>({mix.nInPlay})</span></div>}
                             </div>
                           </div>
-                        ):<div style={{fontSize:'10px',color:'#1e3a5f',fontStyle:'italic'}}>No pitches recorded at this count</div>}
+                        </div>):<div style={{fontSize:'10px',color:'#1e3a5f',fontStyle:'italic'}}>No pitches recorded at this count</div>}
                       </div>
                     );
                   })}
@@ -685,16 +677,14 @@ export default function App(){
                     <tbody>
                       {anaData.stats&&PT.filter(t=>anaData.stats.ptBreak[t]?.n>0).sort((a,b)=>anaData.stats.ptBreak[b].n-anaData.stats.ptBreak[a].n).map(t=>{
                         const d=anaData.stats.ptBreak[t];
-                        return(
-                          <tr key={t} style={{borderBottom:'1px solid #0a1929'}}>
-                            <td style={{padding:'6px 8px'}}><span style={{background:PC[t],color:'#fff',padding:'2px 6px',borderRadius:'3px',fontWeight:'800',fontSize:'10px'}}>{t}</span><span style={{marginLeft:'5px',color:'#334155',fontSize:'10px'}}>{PL[t]}</span></td>
-                            <td style={{padding:'6px 8px',color:'#64748b'}}>{d.n}</td>
-                            <td style={{padding:'6px 8px'}}><div style={{display:'flex',alignItems:'center',gap:'5px'}}><div style={{width:'50px',height:'5px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}><div style={{width:d.pct+'%',height:'100%',background:PC[t],borderRadius:'3px'}}/></div><span style={{color:'#e2e8f0',fontWeight:'700',fontSize:'11px'}}>{d.pct}%</span></div></td>
-                            <td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.whiff/d.n*100)>=25?'#22c55e':'#64748b',fontWeight:'700'}}>{d.n>0?Math.round(d.whiff/d.n*100)+'%':'—'}</td>
-                            <td style={{padding:'6px 8px',color:'#e2e8f0',fontWeight:'800'}}>{d.avgVel||'—'}</td>
-                            <td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.ball/d.n*100)>=40?'#f43f5e':'#64748b'}}>{d.n>0?Math.round(d.ball/d.n*100)+'%':'—'}</td>
-                          </tr>
-                        );
+                        return(<tr key={t} style={{borderBottom:'1px solid #0a1929'}}>
+                          <td style={{padding:'6px 8px'}}><span style={{background:PC[t],color:'#fff',padding:'2px 6px',borderRadius:'3px',fontWeight:'800',fontSize:'10px'}}>{t}</span><span style={{marginLeft:'5px',color:'#334155',fontSize:'10px'}}>{PL[t]}</span></td>
+                          <td style={{padding:'6px 8px',color:'#64748b'}}>{d.n}</td>
+                          <td style={{padding:'6px 8px'}}><div style={{display:'flex',alignItems:'center',gap:'5px'}}><div style={{width:'50px',height:'5px',background:'#0a1929',borderRadius:'3px',overflow:'hidden'}}><div style={{width:d.pct+'%',height:'100%',background:PC[t],borderRadius:'3px'}}/></div><span style={{color:'#e2e8f0',fontWeight:'700',fontSize:'11px'}}>{d.pct}%</span></div></td>
+                          <td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.whiff/d.n*100)>=25?'#22c55e':'#64748b',fontWeight:'700'}}>{d.n>0?Math.round(d.whiff/d.n*100)+'%':'—'}</td>
+                          <td style={{padding:'6px 8px',color:'#e2e8f0',fontWeight:'800'}}>{d.avgVel||'—'}</td>
+                          <td style={{padding:'6px 8px',color:d.n>0&&Math.round(d.ball/d.n*100)>=40?'#f43f5e':'#64748b'}}>{d.n>0?Math.round(d.ball/d.n*100)+'%':'—'}</td>
+                        </tr>);
                       })}
                     </tbody>
                   </table>
@@ -704,16 +694,12 @@ export default function App(){
                       {PT.filter(t=>anaData.pitches.some(p=>p.type===t&&p.result==='InPlay'&&['1B','2B','3B','HR'].includes(p.hitResult))).map(t=>{
                         const all=anaData.pitches.filter(p=>p.type===t).length;
                         const hitPs=anaData.pitches.filter(p=>p.type===t&&p.result==='InPlay'&&['1B','2B','3B','HR'].includes(p.hitResult));
-                        return(
-                          <div key={t} style={{display:'flex',alignItems:'center',gap:'7px',marginBottom:'6px',fontSize:'11px',fontFamily:'monospace'}}>
-                            <span style={{background:PC[t],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'26px',textAlign:'center'}}>{t}</span>
-                            <span style={{color:'#f43f5e',fontWeight:'800'}}>{hitPs.length}H</span>
-                            <span style={{color:'#334155'}}>({all>0?Math.round(hitPs.length/all*100):0}%)</span>
-                            <div style={{display:'flex',gap:'3px',marginLeft:'auto'}}>
-                              {['1B','2B','3B','HR'].map(hr=>{const n=hitPs.filter(p=>p.hitResult===hr).length;return n>0?<span key={hr} style={{fontSize:'9px',color:'#94a3b8',background:'#0a1929',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}}>{hr}×{n}</span>:null})}
-                            </div>
-                          </div>
-                        );
+                        return(<div key={t} style={{display:'flex',alignItems:'center',gap:'7px',marginBottom:'6px',fontSize:'11px',fontFamily:'monospace'}}>
+                          <span style={{background:PC[t],color:'#fff',padding:'1px 5px',borderRadius:'3px',fontWeight:'800',fontSize:'9px',minWidth:'26px',textAlign:'center'}}>{t}</span>
+                          <span style={{color:'#f43f5e',fontWeight:'800'}}>{hitPs.length}H</span>
+                          <span style={{color:'#334155'}}>({all>0?Math.round(hitPs.length/all*100):0}%)</span>
+                          <div style={{display:'flex',gap:'3px',marginLeft:'auto'}}>{['1B','2B','3B','HR'].map(hr=>{const n=hitPs.filter(p=>p.hitResult===hr).length;return n>0?<span key={hr} style={{fontSize:'9px',color:'#94a3b8',background:'#0a1929',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}}>{hr}×{n}</span>:null})}</div>
+                        </div>);
                       })}
                     </div>
                   )}
