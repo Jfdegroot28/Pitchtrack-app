@@ -15,6 +15,8 @@ const advCnt=(cnt,res)=>{let{b,s}={...cnt};if(res==='Ball')b=Math.min(b+1,4);els
 const isTerm=(cnt,res)=>['InPlay','HBP'].includes(res)||(res==='Ball'&&cnt.b>=3)||(['StrikeL','StrikeS'].includes(res)&&cnt.s>=2);
 const mkAB=(inn=1,lo=false)=>({id:uid(),inning:inn,leadoff:lo,risp:false,scored:false,fps:false,pitches:[],cnt:{b:0,s:0},result:null,hand:'R'});
 const INIT_P={type:'FB',vel:'',fx:null,fy:null,result:null,hitType:null,hitStr:null,hitResult:null};
+const INIT_RUNNERS={first:false,second:false,third:false};
+
 const RESULTS=[{k:'Ball',l:'Ball',c:'#3b82f6'},{k:'StrikeL',l:'Called K',c:'#ef4444'},{k:'StrikeS',l:'Swing K',c:'#ef4444'},{k:'Foul',l:'Foul',c:'#f59e0b'},{k:'InPlay',l:'In Play',c:'#22c55e'},{k:'HBP',l:'HBP',c:'#a78bfa'}];
 const HT=[{k:'GB',l:'Grounder'},{k:'LD',l:'Line Drive'},{k:'FB',l:'Fly Ball'},{k:'PU',l:'Pop Up'}];
 const HS=[{k:'Weak',l:'Weak'},{k:'Mod',l:'Moderate'},{k:'Hard',l:'Hard'}];
@@ -73,7 +75,6 @@ function computeStats(pitches,abs,runsByInning={}){
   }));
   const mkSplit=(sAbs,sPs)=>{
     if(!sAbs.length)return null;
-    const sOuts=sAbs.reduce((sum,ab)=>sum+(ab.result==='DP'?2:['Out','K','KL','FC','SF'].includes(ab.result)?1:0),0);
     const sHits=sAbs.filter(ab=>['1B','2B','3B','HR'].includes(ab.result));
     const sHrs=sAbs.filter(ab=>ab.result==='HR');
     const sKs=sAbs.filter(ab=>['K','KL'].includes(ab.result));
@@ -85,10 +86,9 @@ function computeStats(pitches,abs,runsByInning={}){
     const sInPlay=sPs.filter(p=>p.result==='InPlay');
     const sGb=sInPlay.filter(p=>p.hitType==='GB');
     const sFbP=sInPlay.filter(p=>['FB','PU'].includes(p.hitType));
-    const sComp=sPs.filter(p=>p.comp);
     const sVps=sPs.filter(p=>p.vel);
     const sPtBk=Object.fromEntries(PT.map(t=>{const ps=sPs.filter(p=>p.type===t);return[t,{n:ps.length,pct:sPs.length?Math.round(ps.length/sPs.length*100):0,whiff:ps.filter(p=>p.result==='StrikeS').length}]}));
-    return{bf:sAbs.length,tp:sPs.length,ba:fmtAvg(sAbN>0?sHits.length/sAbN:0),babip:fmtAvg(sBabipD>0?(sHits.length-sHrs.length)/sBabipD:0),pbf:sAbs.length>0?(sPs.length/sAbs.length).toFixed(2):'—',kPct:sAbs.length>0?Math.round(sKs.length/sAbs.length*100)+'%':'—',bbPct:sAbs.length>0?Math.round(sBbs.length/sAbs.length*100)+'%':'—',whiffPct:sPs.length>0?Math.round(sWhiffs.length/sPs.length*100)+'%':'—',fpsPct:sAbs.length>0?Math.round(sFps.length/sAbs.length*100)+'%':'—',gbPct:sInPlay.length>0?Math.round(sGb.length/sInPlay.length*100)+'%':'—',fbPct:sInPlay.length>0?Math.round(sFbP.length/sInPlay.length*100)+'%':'—',compPct:sPs.length>0?Math.round(sComp.length/sPs.length*100)+'%':'—',avgVel:sVps.length?Math.round(sVps.reduce((s,p)=>s+p.vel,0)/sVps.length):null,ptBk:sPtBk};
+    return{bf:sAbs.length,tp:sPs.length,ba:fmtAvg(sAbN>0?sHits.length/sAbN:0),babip:fmtAvg(sBabipD>0?(sHits.length-sHrs.length)/sBabipD:0),pbf:sAbs.length>0?(sPs.length/sAbs.length).toFixed(2):'—',kPct:sAbs.length>0?Math.round(sKs.length/sAbs.length*100)+'%':'—',bbPct:sAbs.length>0?Math.round(sBbs.length/sAbs.length*100)+'%':'—',whiffPct:sPs.length>0?Math.round(sWhiffs.length/sPs.length*100)+'%':'—',fpsPct:sAbs.length>0?Math.round(sFps.length/sAbs.length*100)+'%':'—',gbPct:sInPlay.length>0?Math.round(sGb.length/sInPlay.length*100)+'%':'—',fbPct:sInPlay.length>0?Math.round(sFbP.length/sInPlay.length*100)+'%':'—',avgVel:sVps.length?Math.round(sVps.reduce((s,p)=>s+p.vel,0)/sVps.length):null,ptBk:sPtBk};
   };
   const lSplit=mkSplit(abs.filter(ab=>ab.hand==='L'),pitches.filter(p=>p.hand==='L'));
   const rSplit=mkSplit(abs.filter(ab=>ab.hand==='R'),pitches.filter(p=>p.hand==='R'));
@@ -118,6 +118,31 @@ function ZoneView({pitches=[],pending=null,onClickZone=null,filterType='all',hit
   );
 }
 
+function BaseRunnerDiamond({runners,onChange,disabled}){
+  const bases=[{key:'second',cx:55,cy:16},{key:'first',cx:90,cy:50},{key:'third',cx:20,cy:50}];
+  return(
+    <div style={{padding:'8px 0'}}>
+      <div style={{fontSize:'9px',fontWeight:'800',color:'#475569',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px',textAlign:'center'}}>Base Runners</div>
+      <svg width="110" height="72" viewBox="0 0 110 72" style={{display:'block',margin:'0 auto'}}>
+        <path d="M55,8 L96,46 L55,78 L14,46 Z" fill="none" stroke="#1e3a5f" strokeWidth="1.5"/>
+        {bases.map(({key,cx,cy})=>(
+          <g key={key} onClick={disabled?undefined:()=>onChange({...runners,[key]:!runners[key]})} style={{cursor:disabled?'default':'pointer'}}>
+            <circle cx={cx} cy={cy} r="11" fill={runners[key]?'#f59e0b':'#060d1a'} stroke={runners[key]?'#f59e0b':'#334155'} strokeWidth="1.5" style={{transition:'all 0.15s'}}/>
+            {runners[key]&&<circle cx={cx} cy={cy} r="4" fill="#7c3a00" opacity="0.6"/>}
+          </g>
+        ))}
+        <polygon points="55,68 61,63 59,57 51,57 49,63" fill="#1e3a5f"/>
+      </svg>
+      <div style={{display:'flex',justifyContent:'center',gap:'5px',marginTop:'4px'}}>
+        {[{k:'first',l:'1B'},{k:'second',l:'2B'},{k:'third',l:'3B'}].map(({k,l})=>(
+          <span key={k} style={{fontSize:'9px',fontWeight:'700',padding:'1px 5px',borderRadius:'3px',background:runners[k]?'rgba(245,158,11,0.15)':'transparent',color:runners[k]?'#f59e0b':'#334155',border:`1px solid ${runners[k]?'rgba(245,158,11,0.3)':'#1e3a5f'}`}}>{l}</span>
+        ))}
+        {!disabled&&<button onClick={()=>onChange({...INIT_RUNNERS})} style={{fontSize:'9px',fontWeight:'700',padding:'1px 6px',borderRadius:'3px',background:'transparent',color:'#475569',border:'1px solid #1e3a5f',cursor:'pointer',fontFamily:'inherit'}}>Clear</button>}
+      </div>
+    </div>
+  );
+}
+
 function BatterIcon({hand,selected,onClick,disabled}){
   const c=hand==='L'?'#3b82f6':'#fbbf24';
   const bg=hand==='L'?'rgba(59,130,246,0.14)':'rgba(251,191,36,0.14)';
@@ -143,6 +168,7 @@ export default function App(){
   const [curAB,setCurAB]=useState(mkAB(1,true));
   const [pend,setPend]=useState({...INIT_P});
   const [inningRuns,setInningRuns]=useState({});
+  const [runners,setRunners]=useState({...INIT_RUNNERS});
   const [ana,setAna]=useState({pitcher:'',outingId:'all',filterType:'all',hitsOnly:false,handFilter:'all'});
   const [session,setSession]=useState(null);
   const [authLoading,setAuthLoading]=useState(true);
@@ -152,24 +178,19 @@ export default function App(){
   const [authMode,setAuthMode]=useState('signin');
   const [authDone,setAuthDone]=useState(false);
 
+  // Auto-set RISP from runners
+  useEffect(()=>{
+    setCurAB(prev=>({...prev,risp:runners.second||runners.third}));
+  },[runners.second,runners.third]);
+
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session:s}})=>{setSession(s);setAuthLoading(false)});
     const{data:{subscription}}=supabase.auth.onAuthStateChange((_,s)=>setSession(s));
     return()=>subscription.unsubscribe();
   },[]);
 
-  const handleLogin=async()=>{
-    setAuthErr('');
-    const{error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPass});
-    if(error)setAuthErr(error.message);
-  };
-
-  const handleSignUp=async()=>{
-    setAuthErr('');
-    const{error}=await supabase.auth.signUp({email:authEmail,password:authPass});
-    if(error)setAuthErr(error.message);
-    else setAuthDone(true);
-  };
+  const handleLogin=async()=>{setAuthErr('');const{error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPass});if(error)setAuthErr(error.message)};
+  const handleSignUp=async()=>{setAuthErr('');const{error}=await supabase.auth.signUp({email:authEmail,password:authPass});if(error)setAuthErr(error.message);else setAuthDone(true)};
 
   useEffect(()=>{
     if(!session)return;
@@ -181,9 +202,7 @@ export default function App(){
         const o=payload.new;
         setOutings(prev=>[...prev.filter(x=>x.id!==o.id),{id:o.id,pitcher:o.pitcher,date:o.date,opponent:o.opponent||'',pitches:o.pitches||[],atBats:o.at_bats||[],inningRuns:o.inning_runs||{},inning:o.inning||1}]);
       })
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'pitchers'},payload=>{
-        setPitchers(prev=>[...new Set([...prev,payload.new.name])].sort());
-      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'pitchers'},payload=>{setPitchers(prev=>[...new Set([...prev,payload.new.name])].sort())})
       .subscribe();
     return()=>supabase.removeChannel(ch);
   },[session]);
@@ -196,7 +215,7 @@ export default function App(){
     return()=>clearTimeout(t);
   },[pitches,atBats,inningRuns,inning,active,oid,session]);
 
-  const startOuting=()=>{if(!info.pitcher)return;const id=uid();setOid(id);setActive(true);setPitches([]);setAtBats([]);setInning(1);setInningRuns({});setCurAB(mkAB(1,true));setPend({...INIT_P})};
+  const startOuting=()=>{if(!info.pitcher)return;const id=uid();setOid(id);setActive(true);setPitches([]);setAtBats([]);setInning(1);setInningRuns({});setRunners({...INIT_RUNNERS});setCurAB(mkAB(1,true));setPend({...INIT_P})};
 
   const handleLogPitch=useCallback(()=>{
     if(!pend.fx||!pend.result)return;
@@ -217,12 +236,12 @@ export default function App(){
   },[pend,pitches,atBats,curAB,inning]);
 
   const handleUndo=()=>{if(!curAB.pitches.length)return;const np=curAB.pitches.slice(0,-1);const nc=np.reduce((c,p)=>advCnt(c,p.result),{b:0,s:0});setCurAB(prev=>({...prev,pitches:np,cnt:nc}));setPitches(prev=>prev.slice(0,-1))};
-  const handleNewInning=()=>{const n=inning+1;setInning(n);setCurAB(mkAB(n,true))};
+  const handleNewInning=()=>{const n=inning+1;setInning(n);setRunners({...INIT_RUNNERS});setCurAB(mkAB(n,true))};
   const handleEndOuting=()=>{
     const saved={id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',pitches,atBats,inning,inningRuns};
     setOutings(prev=>[...prev.filter(o=>o.id!==oid),saved]);
     if(session)supabase.from('outings').upsert({id:oid,pitcher:info.pitcher,date:info.date,opponent:info.opponent||'',inning,pitches,at_bats:atBats,inning_runs:inningRuns,completed:true,updated_at:new Date().toISOString()}).then(()=>{});
-    setActive(false);setOid(null);setPitches([]);setAtBats([]);setInning(1);setInningRuns({});setCurAB(mkAB(1,true));setPend({...INIT_P});
+    setActive(false);setOid(null);setPitches([]);setAtBats([]);setInning(1);setInningRuns({});setRunners({...INIT_RUNNERS});setCurAB(mkAB(1,true));setPend({...INIT_P});
   };
   const addPitcher=()=>{if(!newPName.trim())return;const name=newPName.trim();setPitchers(prev=>[...new Set([...prev,name])].sort());setNewPName('');if(session)supabase.from('pitchers').upsert({name}).then(()=>{})};
   const curStats=useMemo(()=>computeStats(pitches,atBats,inningRuns),[pitches,atBats,inningRuns]);
@@ -243,24 +262,13 @@ export default function App(){
         <div style={{fontSize:'42px',marginBottom:'10px'}}>⚾</div>
         <div style={{fontSize:'22px',fontWeight:'800',color:'#f1f5f9',marginBottom:'20px',letterSpacing:'-0.5px'}}>PitchTrack Pro</div>
         <div style={{display:'flex',gap:'4px',marginBottom:'24px',background:'#060d1a',borderRadius:'8px',padding:'4px'}}>
-          {[{k:'signin',l:'Sign In'},{k:'signup',l:'Create Account'}].map(({k,l})=>(
-            <button key={k} onClick={()=>{setAuthMode(k);setAuthErr('');setAuthDone(false);}} style={{flex:1,padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',background:authMode===k?'#1e3a5f':'transparent',color:authMode===k?'#60a5fa':'#475569',transition:'all 0.15s'}}>{l}</button>
-          ))}
+          {[{k:'signin',l:'Sign In'},{k:'signup',l:'Create Account'}].map(({k,l})=>(<button key={k} onClick={()=>{setAuthMode(k);setAuthErr('');setAuthDone(false);}} style={{flex:1,padding:'7px',borderRadius:'6px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'12px',background:authMode===k?'#1e3a5f':'transparent',color:authMode===k?'#60a5fa':'#475569',transition:'all 0.15s'}}>{l}</button>))}
         </div>
-        {authDone?(
-          <div style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.25)',borderRadius:'8px',padding:'16px',fontSize:'13px',color:'#4ade80'}}>
-            ✓ Account created! You can now sign in.
-          </div>
-        ):(
-          <>
-            {authErr&&<div style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:'6px',padding:'9px 12px',fontSize:'12px',color:'#f87171',marginBottom:'16px',textAlign:'left'}}>{authErr}</div>}
-            <input type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} style={{width:'100%',padding:'11px 12px',borderRadius:'7px',border:'1px solid #1e3a5f',background:'#060d1a',color:'#f1f5f9',fontSize:'14px',marginBottom:'10px',boxSizing:'border-box',outline:'none',display:'block'}}/>
-            <input type="password" placeholder="Password" value={authPass} onChange={e=>setAuthPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(authMode==='signin'?handleLogin():handleSignUp())} style={{width:'100%',padding:'11px 12px',borderRadius:'7px',border:'1px solid #1e3a5f',background:'#060d1a',color:'#f1f5f9',fontSize:'14px',marginBottom:'18px',boxSizing:'border-box',outline:'none',display:'block'}}/>
-            {authMode==='signin'
-              ?<button onClick={handleLogin} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#3b82f6',color:'#fff',letterSpacing:'0.3px'}}>Sign In</button>
-              :<button onClick={handleSignUp} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#22c55e',color:'#fff',letterSpacing:'0.3px'}}>Create Account</button>
-            }
-          </>
+        {authDone?(<div style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.25)',borderRadius:'8px',padding:'16px',fontSize:'13px',color:'#4ade80'}}>✓ Account created! You can now sign in.</div>):(
+          <>{authErr&&<div style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:'6px',padding:'9px 12px',fontSize:'12px',color:'#f87171',marginBottom:'16px',textAlign:'left'}}>{authErr}</div>}
+          <input type="email" placeholder="Email address" value={authEmail} onChange={e=>setAuthEmail(e.target.value)} style={{width:'100%',padding:'11px 12px',borderRadius:'7px',border:'1px solid #1e3a5f',background:'#060d1a',color:'#f1f5f9',fontSize:'14px',marginBottom:'10px',boxSizing:'border-box',outline:'none',display:'block'}}/>
+          <input type="password" placeholder="Password" value={authPass} onChange={e=>setAuthPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(authMode==='signin'?handleLogin():handleSignUp())} style={{width:'100%',padding:'11px 12px',borderRadius:'7px',border:'1px solid #1e3a5f',background:'#060d1a',color:'#f1f5f9',fontSize:'14px',marginBottom:'18px',boxSizing:'border-box',outline:'none',display:'block'}}/>
+          {authMode==='signin'?<button onClick={handleLogin} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#3b82f6',color:'#fff',letterSpacing:'0.3px'}}>Sign In</button>:<button onClick={handleSignUp} style={{width:'100%',padding:'12px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:'800',fontSize:'14px',background:'#22c55e',color:'#fff',letterSpacing:'0.3px'}}>Create Account</button>}</>
         )}
       </div>
     </div>
@@ -338,6 +346,10 @@ export default function App(){
                   <div>INN <span style={{color:'#e2e8f0',fontWeight:'700'}}>{inning}</span></div>
                   <div>PITCH <span style={{color:'#e2e8f0',fontWeight:'700'}}>#{pitches.length+1}</span></div>
                   <div>AB-P <span style={{color:'#e2e8f0',fontWeight:'700'}}>{curAB.pitches.length+1}</span></div>
+                </div>
+                {/* BASE RUNNER DIAMOND */}
+                <div style={{borderTop:'1px solid #1e3a5f',marginTop:'10px',paddingTop:'8px'}}>
+                  <BaseRunnerDiamond runners={runners} onChange={setRunners} disabled={!active}/>
                 </div>
               </div>
 
